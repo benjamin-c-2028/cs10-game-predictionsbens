@@ -19,6 +19,8 @@ DEFAULT_ORDER_AMOUNT = 25
 PRICE_TICK_SECONDS = 1 / 30
 PRICE_HISTORY_LIMIT = 180
 MARKET_TRANSITION_SPEED = 3.4
+MAX_FULL_NAME_CHARS = 32
+TUTORIAL_FAKE_PASSWORD = "practice-demo"
 
 BACKGROUND = (14, 18, 23)
 HEADER = (17, 22, 28)
@@ -189,6 +191,11 @@ class BitcoinPredictionGame(arcade.Window):
         )
         arcade.set_background_color(BACKGROUND)
 
+        self.onboarding_active = True
+        self.onboarding_name = ""
+        self.onboarding_name_active = True
+        self.onboarding_message = "Type your full name to create a practice identity."
+        self.player_full_name = ""
         self.balance = STARTING_BALANCE
         self.selected_side = "Up"
         self.selected_amount = DEFAULT_ORDER_AMOUNT
@@ -214,7 +221,8 @@ class BitcoinPredictionGame(arcade.Window):
         starting_price = round(random.uniform(79_750, 80_350), 2)
         history = self._make_opening_history(starting_price)
         price_bias = self.news_card.price_bias
-        self.status_message = "Read the article. The market starts only after you buy a position."
+        call_name = self._player_call_name()
+        self.status_message = f"{call_name}, read the article. The market starts only after you buy a position."
 
         return MarketState(
             target_price=starting_price,
@@ -235,6 +243,10 @@ class BitcoinPredictionGame(arcade.Window):
     def on_draw(self) -> None:
         self.clear()
         self.click_zones = []
+        if self.onboarding_active:
+            self._draw_onboarding()
+            return
+
         self._draw_header()
         self._draw_market()
         self._draw_ticket()
@@ -242,6 +254,9 @@ class BitcoinPredictionGame(arcade.Window):
         self._draw_transition_overlay()
 
     def on_update(self, delta_time: float) -> None:
+        if self.onboarding_active:
+            return
+
         self.market_transition = min(
             1.0,
             self.market_transition + delta_time * MARKET_TRANSITION_SPEED,
@@ -288,8 +303,9 @@ class BitcoinPredictionGame(arcade.Window):
         self.market.settled = True
 
         winning_side = "Up" if self.market.current_price >= self.market.target_price else "Down"
+        call_name = self._player_call_name()
         if self.position is None:
-            self.status_message = f"Market settled {winning_side}. No position was opened."
+            self.status_message = f"{call_name}, market settled {winning_side}. No position was opened."
             return
 
         if self.position.side == winning_side:
@@ -297,23 +313,24 @@ class BitcoinPredictionGame(arcade.Window):
             self.balance += payout
             self.position.resolved_result = "Won"
             self.status_message = (
-                f"{winning_side} wins. Your ${self.position.amount} position paid ${payout:,.2f}."
+                f"{call_name}, {winning_side} wins. Your ${self.position.amount} position paid ${payout:,.2f}."
             )
         else:
             self.position.resolved_result = "Lost"
             self.status_message = (
-                f"{winning_side} wins. Your {self.position.side} position expired at $0."
+                f"{call_name}, {winning_side} wins. Your {self.position.side} position expired at $0."
             )
 
     def _buy_position(self) -> None:
+        call_name = self._player_call_name()
         if self.position is not None:
-            self.status_message = "You already bought this market. Wait for settlement."
+            self.status_message = f"{call_name}, you already bought this market. Wait for settlement."
             return
         if self.market.settled:
-            self.status_message = "This market is settled. Start a new market."
+            self.status_message = f"{call_name}, this market is settled. Start a new market."
             return
         if self.selected_amount > self.balance:
-            self.status_message = "Not enough balance for that order amount."
+            self.status_message = f"{call_name}, not enough balance for that order amount."
             return
 
         entry_price = self._contract_price(self.selected_side)
@@ -327,7 +344,7 @@ class BitcoinPredictionGame(arcade.Window):
         )
         self.market.active = True
         self.status_message = (
-            f"Bought {self.selected_side} for ${self.selected_amount} at {entry_price}c. "
+            f"Nice, {call_name}. Bought {self.selected_side} for ${self.selected_amount} at {entry_price}c. "
             "The 15-second market is now live."
         )
 
@@ -366,22 +383,181 @@ class BitcoinPredictionGame(arcade.Window):
         if clicked_key is None:
             return
 
+        if self.onboarding_active:
+            self._handle_onboarding_click(clicked_key)
+            return
+
         if clicked_key == "new_market":
             self.market = self._new_market()
             return
 
         if self.position is not None:
-            self.status_message = "Trade is locked. Watch the market settle."
+            self.status_message = f"{self._player_call_name()}, trade is locked. Watch the market settle."
             return
 
         if clicked_key in ("side_up", "side_down") and not self.market.settled:
             self.selected_side = "Up" if clicked_key == "side_up" else "Down"
-            self.status_message = f"{self.selected_side} selected. Choose amount, then buy."
+            self.status_message = f"{self.selected_side} selected, {self._player_call_name()}. Choose amount, then buy."
         elif clicked_key.startswith("amount_") and not self.market.settled:
             self.selected_amount = int(clicked_key.split("_", 1)[1])
             self.status_message = f"Order amount set to ${self.selected_amount}."
         elif clicked_key == "buy":
             self._buy_position()
+
+    def on_text(self, text: str) -> None:
+        if not self.onboarding_active or not self.onboarding_name_active:
+            return
+
+        allowed = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ -'."
+        for character in text:
+            if character in allowed and len(self.onboarding_name) < MAX_FULL_NAME_CHARS:
+                self.onboarding_name += character
+        self.onboarding_message = "Press Enter or click Start Practice Tutorial."
+
+    def on_key_press(self, symbol: int, modifiers: int) -> None:
+        del modifiers
+        if not self.onboarding_active:
+            return
+
+        if symbol == arcade.key.BACKSPACE:
+            self.onboarding_name = self.onboarding_name[:-1]
+            self.onboarding_message = "Type your full name to create a practice identity."
+        elif symbol in (arcade.key.ENTER, arcade.key.RETURN):
+            self._finish_onboarding()
+        elif symbol == arcade.key.TAB:
+            self.onboarding_name_active = True
+
+    def _handle_onboarding_click(self, clicked_key: str) -> None:
+        if clicked_key == "onboard_name":
+            self.onboarding_name_active = True
+            self.onboarding_message = "Type your full name, like Benjamin Silverman."
+        elif clicked_key == "onboard_password":
+            self.onboarding_name_active = False
+            self.onboarding_message = "The fake password is already set for practice mode and is never saved."
+        elif clicked_key == "onboard_start":
+            self._finish_onboarding()
+
+    def _finish_onboarding(self) -> None:
+        full_name = " ".join(self.onboarding_name.strip().split())
+        if not full_name:
+            self.onboarding_name_active = True
+            self.onboarding_message = "Enter your full name first, like Benjamin Silverman."
+            return
+
+        self.player_full_name = full_name
+        self.onboarding_name = full_name
+        self.onboarding_name_active = False
+        self.onboarding_active = False
+        self.market_transition = 0.0
+        self.status_message = (
+            f"Welcome, {self._player_call_name()}. Read the article, choose Up or Down, "
+            "then buy to start the tutorial market."
+        )
+
+    def _player_call_name(self) -> str:
+        if not self.player_full_name:
+            return "Trader"
+        return self.player_full_name.split()[0]
+
+    def _draw_onboarding(self) -> None:
+        arcade.draw_lbwh_rectangle_filled(0, 0, WINDOW_WIDTH, WINDOW_HEIGHT, BACKGROUND)
+        arcade.draw_lbwh_rectangle_filled(0, WINDOW_HEIGHT - 74, WINDOW_WIDTH, 74, HEADER)
+        arcade.draw_line(0, WINDOW_HEIGHT - 74, WINDOW_WIDTH, WINDOW_HEIGHT - 74, BORDER, 1)
+        arcade.draw_text("Polymarket Practice", 70, WINDOW_HEIGHT - 45, TEXT, 24, bold=True, anchor_y="center")
+        arcade.draw_text("<>", 40, WINDOW_HEIGHT - 45, TEXT, 18, bold=True, anchor_y="center")
+        arcade.draw_text(
+            "Tutorial onboarding - fake account only",
+            WINDOW_WIDTH - 70,
+            WINDOW_HEIGHT - 45,
+            MUTED,
+            13,
+            anchor_x="right",
+            anchor_y="center",
+        )
+
+        panel_left = 220
+        panel_bottom = 142
+        panel_width = 1000
+        panel_height = 590
+        arcade.draw_lbwh_rectangle_filled(panel_left, panel_bottom, panel_width, panel_height, PANEL)
+        arcade.draw_lbwh_rectangle_outline(panel_left, panel_bottom, panel_width, panel_height, BORDER, 1)
+        arcade.draw_lbwh_rectangle_filled(panel_left, panel_bottom + panel_height - 8, panel_width, 8, BLUE)
+
+        arcade.draw_text("Welcome to the market tutorial", panel_left + 48, panel_bottom + 502, TEXT, 34, bold=True)
+        arcade.draw_text(
+            "Set up a practice identity before the first Bitcoin market opens.",
+            panel_left + 50,
+            panel_bottom + 466,
+            MUTED,
+            15,
+        )
+
+        steps = [
+            ("1", "Enter your full name", "This is what the game calls you during the tutorial."),
+            ("2", "Use the preset fake password", "It is already filled in and never written to a file."),
+            ("3", "Practice a prediction", "Read the article, pick Up or Down, then buy a mock position."),
+        ]
+        for index, (number, title, detail) in enumerate(steps):
+            y = panel_bottom + 370 - index * 92
+            arcade.draw_circle_filled(panel_left + 70, y + 8, 22, PANEL_SOFT)
+            arcade.draw_circle_outline(panel_left + 70, y + 8, 22, BLUE, 2)
+            arcade.draw_text(number, panel_left + 70, y + 1, TEXT, 15, bold=True, anchor_x="center", anchor_y="center")
+            arcade.draw_text(title, panel_left + 110, y + 18, TEXT, 18, bold=True)
+            arcade.draw_text(detail, panel_left + 110, y - 10, MUTED, 13, width=390, multiline=True)
+
+        form_left = panel_left + 570
+        form_top = panel_bottom + 402
+        arcade.draw_text("Create Practice Identity", form_left, form_top + 74, TEXT, 21, bold=True)
+        arcade.draw_text("Full Name", form_left, form_top + 38, MUTED, 12, bold=True)
+
+        name_zone = ClickZone("onboard_name", form_left, form_top - 32, 352, 58)
+        self.click_zones.append(name_zone)
+        name_border = BLUE if self.onboarding_name_active else BORDER
+        arcade.draw_lbwh_rectangle_filled(name_zone.left, name_zone.bottom, name_zone.width, name_zone.height, PANEL_SOFT)
+        arcade.draw_lbwh_rectangle_outline(name_zone.left, name_zone.bottom, name_zone.width, name_zone.height, name_border, 2)
+        if self.onboarding_name:
+            name_display = self.onboarding_name
+            name_color = TEXT
+        else:
+            name_display = "Example: Benjamin Silverman"
+            name_color = MUTED_DARK
+        if self.onboarding_name_active and self.onboarding_name:
+            name_display = f"{name_display}|"
+        arcade.draw_text(name_display, name_zone.left + 18, name_zone.center_y - 8, name_color, 16, bold=True)
+
+        arcade.draw_text("Fake Password", form_left, form_top - 88, MUTED, 12, bold=True)
+        password_zone = ClickZone("onboard_password", form_left, form_top - 158, 352, 58)
+        self.click_zones.append(password_zone)
+        arcade.draw_lbwh_rectangle_filled(password_zone.left, password_zone.bottom, password_zone.width, password_zone.height, (26, 33, 42))
+        arcade.draw_lbwh_rectangle_outline(password_zone.left, password_zone.bottom, password_zone.width, password_zone.height, BORDER, 1)
+        arcade.draw_text(TUTORIAL_FAKE_PASSWORD, password_zone.left + 18, password_zone.center_y - 8, MUTED, 16, bold=True)
+        arcade.draw_text(
+            "Preset for practice. Nothing is saved.",
+            form_left,
+            form_top - 184,
+            MUTED_DARK,
+            11,
+        )
+
+        start_zone = ClickZone("onboard_start", form_left, panel_bottom + 104, 352, 58)
+        self.click_zones.append(start_zone)
+        can_start = bool(self.onboarding_name.strip())
+        start_color = GREEN_DARK if can_start else PANEL_SOFT
+        if self.hovered_key == "onboard_start" and can_start:
+            start_color = GREEN
+        arcade.draw_lbwh_rectangle_filled(start_zone.left, start_zone.bottom, start_zone.width, start_zone.height, start_color)
+        arcade.draw_lbwh_rectangle_outline(start_zone.left, start_zone.bottom, start_zone.width, start_zone.height, BORDER, 1)
+        arcade.draw_text(
+            "Start Practice Tutorial",
+            start_zone.center_x,
+            start_zone.center_y + 1,
+            TEXT if can_start else MUTED,
+            17,
+            bold=True,
+            anchor_x="center",
+            anchor_y="center",
+        )
+        arcade.draw_text(self.onboarding_message, form_left, panel_bottom + 70, MUTED, 12, width=350, multiline=True)
 
     def _draw_header(self) -> None:
         arcade.draw_lbwh_rectangle_filled(0, WINDOW_HEIGHT - 74, WINDOW_WIDTH, 74, HEADER)
@@ -400,7 +576,8 @@ class BitcoinPredictionGame(arcade.Window):
             arcade.draw_text(label, x, WINDOW_HEIGHT - 104, color, 13, bold=label == "Crypto")
             x += 124
 
-        arcade.draw_text("Practice mode - no real trading", WINDOW_WIDTH - 70, WINDOW_HEIGHT - 45, MUTED, 13, anchor_x="right", anchor_y="center")
+        account_label = f"{self._player_call_name()}'s practice account - no real trading"
+        arcade.draw_text(account_label, WINDOW_WIDTH - 70, WINDOW_HEIGHT - 45, MUTED, 13, anchor_x="right", anchor_y="center")
 
     def _draw_market(self) -> None:
         left = 70
@@ -577,7 +754,7 @@ class BitcoinPredictionGame(arcade.Window):
         arcade.draw_text("stake", zone.center_x, zone.center_y - 17, MUTED, 10, anchor_x="center", anchor_y="center")
 
     def _draw_position_summary(self, left: float, top: float, width: float) -> None:
-        arcade.draw_text("Balance", left, top, MUTED, 12, bold=True)
+        arcade.draw_text(f"{self._player_call_name()}'s Balance", left, top, MUTED, 12, bold=True)
         arcade.draw_text(f"${self.balance:,.2f}", left, top - 28, TEXT, 22, bold=True)
         arcade.draw_text(self.status_message, left, top - 74, MUTED, 11, width=int(width), multiline=True)
 

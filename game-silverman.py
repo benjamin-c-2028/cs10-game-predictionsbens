@@ -13,6 +13,8 @@ WINDOW_HEIGHT = 780
 WINDOW_TITLE = "Arcade Prediction Market"
 BUY_SOUND_PATH = Path(__file__).resolve().parent / "asset-game" / "sounds" / "buy_cash_register.ogg"
 STARTING_CASH = 1000
+MAX_FULL_NAME_CHARS = 32
+TUTORIAL_FAKE_PASSWORD = "practice-demo"
 
 
 def hex_color(value: str) -> arcade.types.Color:
@@ -81,6 +83,14 @@ class PredictionMarketWindow(arcade.Window):
         arcade.set_background_color(self.colors["bg"])
 
         self.font_primary = "Arial"
+        self.onboarding_active = True
+        self.onboarding_name = ""
+        self.onboarding_name_active = True
+        self.onboarding_message = "Type your full name to create a practice identity."
+        self.onboarding_name_rect = Rect(0, 0, 0, 0)
+        self.onboarding_password_rect = Rect(0, 0, 0, 0)
+        self.onboarding_start_rect = Rect(0, 0, 0, 0)
+        self.player_full_name = ""
         self.market_title = "WTI Daily Up or Down"
         self.base_price = 105.10
         self.chart_length = 75
@@ -180,6 +190,9 @@ class PredictionMarketWindow(arcade.Window):
         ]
 
     def on_update(self, delta_time: float) -> None:
+        if self.onboarding_active:
+            return
+
         self.market_tick_accumulator += delta_time
         while self.market_tick_accumulator >= self.market_tick_seconds:
             self.market_tick_accumulator -= self.market_tick_seconds
@@ -191,8 +204,133 @@ class PredictionMarketWindow(arcade.Window):
         self.trade_side_buttons.clear()
         self.amount_buttons.clear()
 
+        if self.onboarding_active:
+            self._draw_onboarding()
+            return
+
         self._draw_header()
         self._draw_main_layout()
+
+    def _draw_onboarding(self) -> None:
+        arcade.draw_rect_filled(
+            arcade.XYWH(self.width / 2, self.height / 2, self.width, self.height),
+            self.colors["bg"],
+        )
+        header_height = 84
+        arcade.draw_rect_filled(
+            arcade.XYWH(self.width / 2, self.height - header_height / 2, self.width, header_height),
+            self.colors["panel"],
+        )
+        arcade.draw_line(0, self.height - header_height, self.width, self.height - header_height, self.colors["panel_border"], 1)
+        arcade.draw_text(
+            "Polymarket Practice",
+            36,
+            self.height - 55,
+            self.colors["text"],
+            22,
+            font_name=self.font_primary,
+            bold=True,
+        )
+        arcade.draw_text(
+            "Tutorial onboarding - fake account only",
+            self.width - 42,
+            self.height - 55,
+            self.colors["muted"],
+            13,
+            font_name=self.font_primary,
+            anchor_x="right",
+        )
+
+        panel_width = min(980, self.width - 120)
+        panel_height = min(530, self.height - 170)
+        panel = Rect(
+            (self.width - panel_width) / 2,
+            (self.width + panel_width) / 2,
+            (self.height - panel_height) / 2 - 10,
+            (self.height + panel_height) / 2 - 10,
+        )
+        self._draw_rounded_panel(panel, self.colors["panel"], border_color=self.colors["panel_border"])
+        arcade.draw_rect_filled(
+            arcade.XYWH(panel.center_x, panel.top - 4, panel.width, 8),
+            self.colors["accent_blue"],
+        )
+
+        arcade.draw_text(
+            "Welcome to the market tutorial",
+            panel.left + 42,
+            panel.top - 76,
+            self.colors["text"],
+            30,
+            font_name=self.font_primary,
+            bold=True,
+        )
+        arcade.draw_text(
+            "Create a practice identity before the first simulated market opens.",
+            panel.left + 44,
+            panel.top - 112,
+            self.colors["muted"],
+            15,
+            font_name=self.font_primary,
+        )
+
+        steps = [
+            ("Step 1", "Enter your full name", "This is what the game calls you during the tutorial."),
+            ("Step 2", "Use the preset fake password", "It is already filled in and never written to a file."),
+            ("Step 3", "Practice a prediction", "Pick Up or Down, choose an amount, and place a mock order."),
+        ]
+        for index, (step, title, detail) in enumerate(steps):
+            y = panel.top - 188 - index * 82
+            arcade.draw_text(step, panel.left + 48, y + 14, self.colors["accent_blue"], 12, font_name=self.font_primary, bold=True)
+            arcade.draw_text(title, panel.left + 48, y - 10, self.colors["text"], 17, font_name=self.font_primary, bold=True)
+            arcade.draw_text(detail, panel.left + 48, y - 34, self.colors["muted"], 12, font_name=self.font_primary, width=390, multiline=True)
+
+        form_left = panel.left + panel.width - 396
+        form_top = panel.top - 172
+        arcade.draw_text("Create Practice Identity", form_left, form_top + 66, self.colors["text"], 20, font_name=self.font_primary, bold=True)
+        arcade.draw_text("Full Name", form_left, form_top + 30, self.colors["muted"], 12, font_name=self.font_primary, bold=True)
+
+        self.onboarding_name_rect = Rect(form_left, form_left + 332, form_top - 44, form_top + 14)
+        name_border = self.colors["accent_blue"] if self.onboarding_name_active else self.colors["panel_border"]
+        self._draw_rounded_panel(self.onboarding_name_rect, self.colors["panel_soft"], border_color=name_border)
+        if self.onboarding_name:
+            name_display = self.onboarding_name
+            name_color = self.colors["text"]
+        else:
+            name_display = "Example: Benjamin Silverman"
+            name_color = self.colors["muted_soft"]
+        if self.onboarding_name_active and self.onboarding_name:
+            name_display = f"{name_display}|"
+        arcade.draw_text(name_display, self.onboarding_name_rect.left + 16, self.onboarding_name_rect.center_y - 8, name_color, 15, font_name=self.font_primary, bold=True)
+
+        arcade.draw_text("Fake Password", form_left, form_top - 102, self.colors["muted"], 12, font_name=self.font_primary, bold=True)
+        self.onboarding_password_rect = Rect(form_left, form_left + 332, form_top - 176, form_top - 118)
+        self._draw_rounded_panel(self.onboarding_password_rect, self.colors["search"], border_color=self.colors["panel_border"])
+        arcade.draw_text(
+            TUTORIAL_FAKE_PASSWORD,
+            self.onboarding_password_rect.left + 16,
+            self.onboarding_password_rect.center_y - 8,
+            self.colors["muted"],
+            15,
+            font_name=self.font_primary,
+            bold=True,
+        )
+        arcade.draw_text("Preset for practice. Nothing is saved.", form_left, form_top - 204, self.colors["muted_soft"], 11, font_name=self.font_primary)
+
+        self.onboarding_start_rect = Rect(form_left, form_left + 332, panel.bottom + 54, panel.bottom + 108)
+        can_start = bool(self.onboarding_name.strip())
+        button_color = self.colors["accent_green"] if can_start else self.colors["panel_soft"]
+        self._draw_rounded_panel(self.onboarding_start_rect, button_color, border_color=self.colors["panel_border"])
+        arcade.draw_text(
+            "Start Practice Tutorial",
+            self.onboarding_start_rect.center_x,
+            self.onboarding_start_rect.center_y - 7,
+            self.colors["text"] if can_start else self.colors["muted"],
+            16,
+            font_name=self.font_primary,
+            anchor_x="center",
+            bold=True,
+        )
+        arcade.draw_text(self.onboarding_message, form_left, panel.bottom + 22, self.colors["muted"], 12, font_name=self.font_primary, width=332, multiline=True)
 
     def _draw_header(self) -> None:
         width = self.width
@@ -272,12 +410,13 @@ class PredictionMarketWindow(arcade.Window):
 
         signup = Rect(width - 138, width - 40, self.height - 72, self.height - 26)
         self._draw_rounded_panel(signup, self.colors["accent_blue"])
+        account_label = self._player_call_name() if self.player_full_name else "Sign Up"
         arcade.draw_text(
-            "Sign Up",
+            account_label,
             signup.center_x,
             signup.center_y - 9,
             self.colors["text"],
-            16,
+            15,
             font_name=self.font_primary,
             anchor_x="center",
             bold=True,
@@ -556,7 +695,7 @@ class PredictionMarketWindow(arcade.Window):
         self._draw_contract_button(down_rect, "Down", self.contract_prices["Down"], self.trade_side == "Down")
 
         stats_top = rect.top - 168
-        self._draw_trade_stat("Cash", self._format_whole_dollars(self.cash_balance), rect.left + 18, stats_top)
+        self._draw_trade_stat(f"{self._player_call_name()}'s Cash", self._format_whole_dollars(self.cash_balance), rect.left + 18, stats_top)
         self._draw_trade_stat("Purchased", self._format_whole_dollars(self.purchased_total), rect.left + 188, stats_top)
 
         arcade.draw_text("Amount", rect.left + 18, rect.top - 248, self.colors["text"], 16, font_name=self.font_primary)
@@ -691,14 +830,46 @@ class PredictionMarketWindow(arcade.Window):
         self.amount = int(self.amount_input_text) if self.amount_input_text else 0
         return self.amount
 
+    def _player_call_name(self) -> str:
+        if not self.player_full_name:
+            return "Trader"
+        return self.player_full_name.split()[0]
+
+    def _finish_onboarding(self) -> None:
+        full_name = " ".join(self.onboarding_name.strip().split())
+        if not full_name:
+            self.onboarding_name_active = True
+            self.onboarding_message = "Enter your full name first, like Benjamin Silverman."
+            return
+
+        self.player_full_name = full_name
+        self.onboarding_name = full_name
+        self.onboarding_name_active = False
+        self.onboarding_active = False
+        self.status_message = (
+            f"Welcome, {self._player_call_name()}. Pick Up or Down, choose an amount, "
+            "and place a mock order in the tutorial market."
+        )
+
     def on_mouse_press(self, x: float, y: float, button: int, modifiers: int) -> None:
         del button, modifiers
+
+        if self.onboarding_active:
+            if self.onboarding_name_rect.contains(x, y):
+                self.onboarding_name_active = True
+                self.onboarding_message = "Type your full name, like Benjamin Silverman."
+            elif self.onboarding_password_rect.contains(x, y):
+                self.onboarding_name_active = False
+                self.onboarding_message = "The fake password is already set for practice mode and is never saved."
+            elif self.onboarding_start_rect.contains(x, y):
+                self._finish_onboarding()
+            return
 
         for mode, rect in self.trade_mode_buttons.items():
             if rect.contains(x, y):
                 self.amount_input_active = False
                 self.trade_mode = mode
-                self.status_message = f"{mode} mode selected. Live mock ticket ready."
+                self.status_message = f"{mode} mode selected. {self._player_call_name()}'s mock ticket is ready."
                 return
 
         for side, rect in self.trade_side_buttons.items():
@@ -706,12 +877,12 @@ class PredictionMarketWindow(arcade.Window):
                 self.amount_input_active = False
                 self.trade_side = side
                 price = self.contract_prices[side]
-                self.status_message = f"{side} selected at {price}¢. The live market will keep moving."
+                self.status_message = f"{side} selected at {price}¢, {self._player_call_name()}. The live market will keep moving."
                 return
 
         if self.amount_input_rect.contains(x, y):
             self.amount_input_active = True
-            self.status_message = "Type an amount, then click Buy or Sell."
+            self.status_message = f"{self._player_call_name()}, type an amount, then click Buy or Sell."
             return
 
         self.amount_input_active = False
@@ -721,18 +892,18 @@ class PredictionMarketWindow(arcade.Window):
             if rect.contains(x, y):
                 self.amount += step
                 self.amount_input_text = str(self.amount)
-                self.status_message = f"Added ${step}. Mock order total is now ${self.amount}."
+                self.status_message = f"Added ${step}. {self._player_call_name()}'s mock order total is now ${self.amount}."
                 return
 
         if self.trade_button_rect.contains(x, y):
             trade_amount = self._sync_amount_from_input()
 
             if trade_amount <= 0:
-                self.status_message = "Choose an amount before placing the mock trade."
+                self.status_message = f"{self._player_call_name()}, choose an amount before placing the mock trade."
             elif self.trade_mode == "Buy" and trade_amount > self.cash_balance:
-                self.status_message = f"Not enough cash. You have {self._format_whole_dollars(self.cash_balance)} left."
+                self.status_message = f"{self._player_call_name()}, not enough cash. You have {self._format_whole_dollars(self.cash_balance)} left."
             elif self.trade_mode == "Sell" and trade_amount > self.purchased_total:
-                self.status_message = f"You only have {self._format_whole_dollars(self.purchased_total)} purchased to sell."
+                self.status_message = f"{self._player_call_name()}, you only have {self._format_whole_dollars(self.purchased_total)} purchased to sell."
             else:
                 if self.trade_mode == "Buy":
                     self.cash_balance -= trade_amount
@@ -742,7 +913,7 @@ class PredictionMarketWindow(arcade.Window):
                     self.purchased_total -= trade_amount
                 self._play_trade_sound()
                 self.status_message = (
-                    f"{self.trade_mode} order filled for {self._format_whole_dollars(trade_amount)} on "
+                    f"{self._player_call_name()}, {self.trade_mode} order filled for {self._format_whole_dollars(trade_amount)} on "
                     f"{self.trade_side} at {self.contract_prices[self.trade_side]}¢. "
                     f"Cash: {self._format_whole_dollars(self.cash_balance)}. "
                     f"Purchased: {self._format_whole_dollars(self.purchased_total)}."
@@ -751,6 +922,17 @@ class PredictionMarketWindow(arcade.Window):
                 self.amount_input_text = ""
 
     def on_text(self, text: str) -> None:
+        if self.onboarding_active:
+            if not self.onboarding_name_active:
+                return
+
+            allowed = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ -'."
+            for character in text:
+                if character in allowed and len(self.onboarding_name) < MAX_FULL_NAME_CHARS:
+                    self.onboarding_name += character
+            self.onboarding_message = "Press Enter or click Start Practice Tutorial."
+            return
+
         if not self.amount_input_active or not text.isdigit():
             return
 
@@ -764,6 +946,16 @@ class PredictionMarketWindow(arcade.Window):
 
     def on_key_press(self, symbol: int, modifiers: int) -> None:
         del modifiers
+
+        if self.onboarding_active:
+            if symbol == arcade.key.BACKSPACE:
+                self.onboarding_name = self.onboarding_name[:-1]
+                self.onboarding_message = "Type your full name to create a practice identity."
+            elif symbol in (arcade.key.ENTER, arcade.key.RETURN):
+                self._finish_onboarding()
+            elif symbol == arcade.key.TAB:
+                self.onboarding_name_active = True
+            return
 
         if not self.amount_input_active:
             return
