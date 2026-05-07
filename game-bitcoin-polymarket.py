@@ -15,7 +15,10 @@ WINDOW_WIDTH = 1440
 WINDOW_HEIGHT = 880
 WINDOW_TITLE = "Bitcoin Up or Down Arcade"
 
-MARKET_DURATION_SECONDS = 15
+THINK_SECONDS = 10
+RESULT_REAL_SECONDS = 3
+RESULT_TIME_SCALE = 2
+MARKET_DURATION_SECONDS = RESULT_REAL_SECONDS * RESULT_TIME_SCALE
 STARTING_BALANCE = 1000
 DEFAULT_ORDER_AMOUNT = 25
 PRICE_TICK_SECONDS = 1 / 30
@@ -218,7 +221,12 @@ class BitcoinPredictionGame(arcade.Window):
         self.position: Position | None = None
         self.trade_history: list[TradeRecord] = []
         self.dashboard_active = False
-        self.status_message = "Read the article, choose Up or Down, then buy to start the market."
+        self.bet_count = 0
+        self.think_seconds_remaining = THINK_SECONDS
+        self.close_finish_active = False
+        self.close_finish_side = "Up"
+        self.close_finish_gap = 0.12
+        self.status_message = "Read the article, choose Up or Down, then wait for the think timer."
         self.tick_accumulator = 0.0
         self.price_velocity = 0.0
         self.market_transition = 1.0
@@ -234,13 +242,20 @@ class BitcoinPredictionGame(arcade.Window):
         self.position = None
         self.selected_side = "Up"
         self.selected_amount = DEFAULT_ORDER_AMOUNT
+        self.think_seconds_remaining = THINK_SECONDS
+        self.close_finish_active = False
+        self.close_finish_side = "Up"
+        self.close_finish_gap = 0.12
         self.news_card = self._choose_news_card()
 
         starting_price = round(random.uniform(79_750, 80_350), 2)
         history = self._make_opening_history(starting_price)
         price_bias = self.news_card.price_bias
         call_name = self._player_call_name()
-        self.status_message = f"{call_name}, read the article. The market starts only after you buy a position."
+        self.status_message = (
+            f"{call_name}, read the article. You have {THINK_SECONDS} seconds to think "
+            "before buying unlocks."
+        )
 
         return MarketState(
             target_price=starting_price,
@@ -278,7 +293,7 @@ class BitcoinPredictionGame(arcade.Window):
         self._draw_transition_overlay()
 
     def on_update(self, delta_time: float) -> None:
-        if self.onboarding_active or self.tutorial_active:
+        if self.onboarding_active or self.tutorial_active or self.dashboard_active:
             return
 
         self.market_transition = min(
@@ -286,12 +301,22 @@ class BitcoinPredictionGame(arcade.Window):
             self.market_transition + delta_time * MARKET_TRANSITION_SPEED,
         )
 
-        if not self.market.active or self.market.settled:
+        if not self.market.active and not self.market.settled:
+            if self.think_seconds_remaining > 0:
+                previous_remaining = math.ceil(self.think_seconds_remaining)
+                self.think_seconds_remaining = max(0.0, self.think_seconds_remaining - delta_time)
+                if previous_remaining > 0 and self.think_seconds_remaining == 0:
+                    self.status_message = (
+                        f"{self._player_call_name()}, buying is unlocked. Choose a side and submit."
+                    )
+            return
+
+        if self.market.settled:
             return
 
         self.market.elapsed_seconds = min(
             MARKET_DURATION_SECONDS,
-            self.market.elapsed_seconds + delta_time,
+            self.market.elapsed_seconds + delta_time * RESULT_TIME_SCALE,
         )
         self._advance_price(delta_time)
         self.tick_accumulator += delta_time
@@ -308,6 +333,17 @@ class BitcoinPredictionGame(arcade.Window):
     def _advance_price(self, delta_time: float) -> None:
         progress = self.market.elapsed_seconds / MARKET_DURATION_SECONDS
         previous = self.market.current_price
+        if self.close_finish_active:
+            direction = 1 if self.close_finish_side == "Up" else -1
+            wobble = math.sin(progress * math.tau * 4.5) * 2.8 * (1 - progress)
+            suspense_noise = random.uniform(-0.55, 0.55) * (1 - progress)
+            late_drift = direction * self.close_finish_gap * (progress ** 4)
+            self.market.current_price = round(
+                self.market.target_price + wobble + suspense_noise + late_drift,
+                2,
+            )
+            return
+
         trend_force = self.market.price_bias * 7.5
         gravity_force = (self.market.target_price - previous) * 0.045
         wave_force = math.sin(progress * math.tau * 2.4) * 2.6
@@ -325,6 +361,13 @@ class BitcoinPredictionGame(arcade.Window):
     def _settle_market(self) -> None:
         self.market.active = False
         self.market.settled = True
+
+        if self.close_finish_active:
+            direction = 1 if self.close_finish_side == "Up" else -1
+            self.market.current_price = round(
+                self.market.target_price + direction * self.close_finish_gap,
+                2,
+            )
 
         winning_side = "Up" if self.market.current_price >= self.market.target_price else "Down"
         call_name = self._player_call_name()
@@ -354,7 +397,7 @@ class BitcoinPredictionGame(arcade.Window):
         self.trade_history.insert(
             0,
             TradeRecord(
-                market="BTC Up or Down 15s",
+                market="BTC Up or Down",
                 side=self.position.side,
                 amount=self.position.amount,
                 entry_price_cents=self.position.entry_price_cents,
@@ -369,6 +412,10 @@ class BitcoinPredictionGame(arcade.Window):
         if self.position is not None:
             self.status_message = f"{call_name}, you already bought this market. Wait for settlement."
             return
+        if self.think_seconds_remaining > 0:
+            seconds = math.ceil(self.think_seconds_remaining)
+            self.status_message = f"{call_name}, take {seconds} more seconds to think before buying unlocks."
+            return
         if self.market.settled:
             self.status_message = f"{call_name}, this market is settled. Start a new market."
             return
@@ -378,6 +425,11 @@ class BitcoinPredictionGame(arcade.Window):
 
         entry_price = self._contract_price(self.selected_side)
         shares = self.selected_amount / (entry_price / 100)
+        self.bet_count += 1
+        self.close_finish_active = self.bet_count % 3 == 0
+        if self.close_finish_active:
+            self.close_finish_side = random.choice(("Up", "Down"))
+            self.close_finish_gap = round(random.uniform(0.03, 0.18), 2)
         self.balance -= self.selected_amount
         self.position = Position(
             side=self.selected_side,
@@ -388,7 +440,7 @@ class BitcoinPredictionGame(arcade.Window):
         self.market.active = True
         self.status_message = (
             f"Nice, {call_name}. Bought {self.selected_side} for ${self.selected_amount} at {entry_price}c. "
-            "The 15-second market is now live."
+            "The 3-second reveal is running at 2x speed."
         )
 
     def _contract_price(self, side: str) -> int:
@@ -433,9 +485,10 @@ class BitcoinPredictionGame(arcade.Window):
             if clicked_key == "tutorial_continue":
                 self.tutorial_active = False
                 self.market_transition = 0.0
+                self.think_seconds_remaining = THINK_SECONDS
                 self.status_message = (
-                    f"Welcome, {self._player_call_name()}. Read the article, choose Up or Down, "
-                    "then buy to start the tutorial market."
+                    f"Welcome, {self._player_call_name()}. Read the article while the "
+                    f"{THINK_SECONDS}-second think timer runs."
                 )
             return
 
@@ -798,10 +851,10 @@ class BitcoinPredictionGame(arcade.Window):
         arcade.draw_lbwh_rectangle_filled(left, bottom, width, height, BACKGROUND)
         arcade.draw_lbwh_rectangle_filled(left, bottom + height - 74, 64, 64, ORANGE)
         arcade.draw_text("B", left + 32, bottom + height - 42, WHITE, 34, bold=True, anchor_x="center", anchor_y="center")
-        arcade.draw_text("BTC Up or Down 15s", left + 88, bottom + height - 31, TEXT, 25, bold=True)
-        subtitle = "Read the article, pick a side, then Buy starts the 15-second market"
+        arcade.draw_text("BTC Up or Down", left + 88, bottom + height - 31, TEXT, 25, bold=True)
+        subtitle = f"Read during the {THINK_SECONDS}s think timer, then Buy starts a 3s reveal"
         if self.market.active:
-            subtitle = "Live simulated Bitcoin market"
+            subtitle = f"Live reveal: {RESULT_TIME_SCALE}x simulated speed"
         elif self.market.settled:
             subtitle = "Settled market"
         arcade.draw_text(subtitle, left + 88, bottom + height - 61, MUTED, 14, bold=True)
@@ -823,21 +876,28 @@ class BitcoinPredictionGame(arcade.Window):
             bold=True,
         )
 
-        remaining = max(0, MARKET_DURATION_SECONDS - int(self.market.elapsed_seconds))
+        if not self.market.active and not self.market.settled:
+            remaining = math.ceil(self.think_seconds_remaining)
+        else:
+            remaining = math.ceil(max(0, MARKET_DURATION_SECONDS - self.market.elapsed_seconds))
         minutes, seconds = divmod(remaining, 60)
-        timer_color = MUTED if self.market.settled or not self.market.active else RED
+        timer_color = YELLOW if self.think_seconds_remaining > 0 and not self.market.active else MUTED if self.market.settled else RED
         arcade.draw_text(f"{minutes:02d}", left + width - 112, stats_y - 22, timer_color, 30, bold=True, anchor_x="center")
         arcade.draw_text(f"{seconds:02d}", left + width - 54, stats_y - 22, timer_color, 30, bold=True, anchor_x="center")
         arcade.draw_text("MINS", left + width - 112, stats_y - 48, MUTED, 10, bold=True, anchor_x="center")
         arcade.draw_text("SECS", left + width - 54, stats_y - 48, MUTED, 10, bold=True, anchor_x="center")
         if not self.market.active and not self.market.settled:
-            arcade.draw_text("WAITING", left + width - 84, stats_y + 15, YELLOW, 12, bold=True, anchor_x="center")
+            label = "THINK" if self.think_seconds_remaining > 0 else "READY"
+            arcade.draw_text(label, left + width - 84, stats_y + 15, YELLOW, 12, bold=True, anchor_x="center")
 
         self._draw_progress_bar(left, bottom + height - 202, width - 24, 6)
         self._draw_chart(left, bottom + 44, width, 252)
 
     def _draw_progress_bar(self, left: float, bottom: float, width: float, height: float) -> None:
-        progress = self.market.elapsed_seconds / MARKET_DURATION_SECONDS
+        if not self.market.active and not self.market.settled:
+            progress = 1 - (self.think_seconds_remaining / THINK_SECONDS)
+        else:
+            progress = self.market.elapsed_seconds / MARKET_DURATION_SECONDS
         progress = max(0.0, min(1.0, progress))
         fill_width = width * progress
         fill_color = BLUE if self.market.active else YELLOW if not self.market.settled else MUTED_DARK
@@ -888,6 +948,8 @@ class BitcoinPredictionGame(arcade.Window):
 
         arcade.draw_text("Market start", left, bottom - 28, MUTED_DARK, 11)
         right_label = "Live now" if self.market.active else "Paused"
+        if not self.market.active and not self.market.settled and self.think_seconds_remaining > 0:
+            right_label = "Thinking"
         if self.market.settled:
             right_label = "Settled"
         arcade.draw_text(right_label, left + width - 78, bottom - 28, MUTED_DARK, 11)
@@ -920,12 +982,19 @@ class BitcoinPredictionGame(arcade.Window):
         buy_key = "new_market" if self.market.settled else "buy"
         buy_zone = ClickZone(buy_key, left + 26, bottom + 26, width - 52, 56)
         self.click_zones.append(buy_zone)
-        buy_disabled = self.position is not None and not self.market.settled
+        buy_disabled = (self.position is not None and not self.market.settled) or (
+            self.think_seconds_remaining > 0 and not self.market.settled
+        )
         buy_color = PANEL_SOFT if buy_disabled else GREEN_DARK
         if self.hovered_key == buy_key and not buy_disabled:
             buy_color = BLUE if self.market.settled else GREEN
         arcade.draw_lbwh_rectangle_filled(buy_zone.left, buy_zone.bottom, buy_zone.width, buy_zone.height, buy_color)
-        button_text = "New Market" if self.market.settled else "Buy & Start"
+        if self.market.settled:
+            button_text = "New Market"
+        elif self.think_seconds_remaining > 0:
+            button_text = f"Think {math.ceil(self.think_seconds_remaining)}s"
+        else:
+            button_text = "Buy & Start"
         arcade.draw_text(button_text, buy_zone.center_x, buy_zone.center_y + 2, TEXT if not buy_disabled else MUTED, 18, bold=True, anchor_x="center", anchor_y="center")
 
     def _draw_side_button(self, key: str, label: str, price: int, left: float, bottom: float, width: float, height: float) -> None:
@@ -973,7 +1042,11 @@ class BitcoinPredictionGame(arcade.Window):
             shares = self.selected_amount / (price / 100)
             arcade.draw_text("Preview", left, top - 120, MUTED, 12, bold=True)
             arcade.draw_text(f"{self.selected_side}: {price}c per share", left, top - 146, TEXT, 15, bold=True)
-            arcade.draw_text(f"Buy starts timer | Max payout ${shares:,.2f}", left, top - 168, MUTED, 11)
+            if self.think_seconds_remaining > 0:
+                helper = f"Buy unlocks in {math.ceil(self.think_seconds_remaining)}s | Max payout ${shares:,.2f}"
+            else:
+                helper = f"Buy starts 3s reveal at 2x speed | Max payout ${shares:,.2f}"
+            arcade.draw_text(helper, left, top - 168, MUTED, 11)
             return
 
         result = self.position.resolved_result or "Open"
@@ -1028,7 +1101,7 @@ class BitcoinPredictionGame(arcade.Window):
             (14, 18, 23, alpha),
         )
         arcade.draw_text(
-            "New 15s market",
+            "New market",
             WINDOW_WIDTH / 2,
             WINDOW_HEIGHT / 2 + 12,
             (239, 243, 248, text_alpha),
@@ -1037,7 +1110,7 @@ class BitcoinPredictionGame(arcade.Window):
             anchor_x="center",
         )
         arcade.draw_text(
-            "Read the article, choose a side, then start the round",
+            f"Read the article. Buying unlocks after {THINK_SECONDS} seconds.",
             WINDOW_WIDTH / 2,
             WINDOW_HEIGHT / 2 - 18,
             (141, 151, 166, text_alpha),
