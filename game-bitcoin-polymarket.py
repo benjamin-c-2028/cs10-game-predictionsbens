@@ -18,6 +18,7 @@ WINDOW_TITLE = "Bitcoin Up or Down Arcade"
 MARKET_DURATION_SECONDS = 15
 STARTING_BALANCE = 1000
 DEFAULT_ORDER_AMOUNT = 25
+PRICE_STEP_DOLLARS = 5
 PRICE_TICK_SECONDS = 1 / 30
 PRICE_HISTORY_LIMIT = 180
 MARKET_TRANSITION_SPEED = 3.4
@@ -47,7 +48,7 @@ class NewsCard:
     headline: str
     source: str
     analysis_label: str
-    reliability: float
+    reliability: int
     price_bias: float
 
 
@@ -107,28 +108,28 @@ UPWARD_BIAS_NEWS = [
         "Bitcoin ETF desks report steady inflows",
         "Crypto Wire",
         "High-Impact Analysis",
-        0.92,
+        50,
         0.42,
     ),
     NewsCard(
         "Miners slow BTC transfers to exchanges",
         "Block Ledger",
         "Indirect Connections: Bitcoin's Echoes",
-        0.76,
+        38,
         0.34,
     ),
     NewsCard(
         "Risk assets bounce after softer rate comments",
         "Macro Desk",
         "Bitcoin and Beyond: The Subtler Link",
-        0.80,
+        44,
         0.31,
     ),
     NewsCard(
         "Stablecoin liquidity rises across major exchanges",
         "Market Pulse",
         "Indirect Connections: Bitcoin's Echoes",
-        0.76,
+        35,
         0.26,
     ),
 ]
@@ -138,28 +139,28 @@ DOWNWARD_BIAS_NEWS = [
         "Exchange wallets receive a burst of BTC deposits",
         "Chain Watch",
         "High-Impact Analysis",
-        0.92,
+        52,
         -0.39,
     ),
     NewsCard(
         "Dollar strength pressures crypto markets",
         "Macro Desk",
         "Bitcoin and Beyond: The Subtler Link",
-        0.80,
+        42,
         -0.33,
     ),
     NewsCard(
         "Leveraged longs face liquidation risk",
         "Derivatives Daily",
         "High-Impact Analysis",
-        0.92,
+        48,
         -0.36,
     ),
     NewsCard(
         "Regulatory headline cools crypto momentum",
         "Policy Wire",
         "Bitcoin and Beyond: The Subtler Link",
-        0.80,
+        31,
         -0.28,
     ),
 ]
@@ -169,24 +170,26 @@ LOW_BIAS_NEWS = [
         "Bitcoin trades inside a narrow short-term range",
         "Ticker Desk",
         "Indirect Connections: Bitcoin's Echoes",
-        0.76,
+        30,
         0.02,
     ),
     NewsCard(
         "Options desk says near-term volatility is balanced",
         "Vol Report",
         "Bitcoin and Beyond: The Subtler Link",
-        0.80,
+        34,
         -0.01,
     ),
     NewsCard(
         "Spot volume holds near its daily average",
         "Exchange Beat",
         "Indirect Connections: Bitcoin's Echoes",
-        0.76,
+        28,
         0.00,
     ),
 ]
+
+ALL_NEWS = UPWARD_BIAS_NEWS + DOWNWARD_BIAS_NEWS + LOW_BIAS_NEWS
 
 
 class BitcoinPredictionGame(arcade.Window):
@@ -218,13 +221,13 @@ class BitcoinPredictionGame(arcade.Window):
         self.position: Position | None = None
         self.trade_history: list[TradeRecord] = []
         self.dashboard_active = False
-        self.status_message = "Read the article, choose Up or Down, then buy to start the market."
+        self.status_message = "Read the articles, choose Up or Down, then buy to start the market."
         self.tick_accumulator = 0.0
         self.price_velocity = 0.0
         self.market_transition = 1.0
         self.hovered_key: str | None = None
         self.click_zones: list[ClickZone] = []
-        self.news_card = random.choice(UPWARD_BIAS_NEWS + DOWNWARD_BIAS_NEWS + LOW_BIAS_NEWS)
+        self.news_cards = self._choose_news_cards()
         self.market = self._new_market()
 
     def _new_market(self) -> MarketState:
@@ -234,13 +237,13 @@ class BitcoinPredictionGame(arcade.Window):
         self.position = None
         self.selected_side = "Up"
         self.selected_amount = DEFAULT_ORDER_AMOUNT
-        self.news_card = self._choose_news_card()
+        self.news_cards = self._choose_news_cards()
 
         starting_price = round(random.uniform(79_750, 80_350), 2)
         history = self._make_opening_history(starting_price)
-        price_bias = self.news_card.price_bias
+        price_bias = self._combined_news_bias()
         call_name = self._player_call_name()
-        self.status_message = f"{call_name}, read the article. The market starts only after you buy a position."
+        self.status_message = f"{call_name}, read the articles. The market starts only after you buy a position."
 
         return MarketState(
             target_price=starting_price,
@@ -252,8 +255,11 @@ class BitcoinPredictionGame(arcade.Window):
             price_bias=price_bias,
         )
 
-    def _choose_news_card(self) -> NewsCard:
-        return random.choice(UPWARD_BIAS_NEWS + DOWNWARD_BIAS_NEWS + LOW_BIAS_NEWS)
+    def _choose_news_cards(self) -> list[NewsCard]:
+        return random.sample(ALL_NEWS, 3)
+
+    def _combined_news_bias(self) -> float:
+        return sum(card.price_bias for card in self.news_cards) / len(self.news_cards)
 
     def _make_opening_history(self, ending_price: float) -> list[float]:
         return [ending_price for _ in range(80)]
@@ -308,19 +314,19 @@ class BitcoinPredictionGame(arcade.Window):
     def _advance_price(self, delta_time: float) -> None:
         progress = self.market.elapsed_seconds / MARKET_DURATION_SECONDS
         previous = self.market.current_price
-        trend_force = self.market.price_bias * 7.5
-        gravity_force = (self.market.target_price - previous) * 0.045
-        wave_force = math.sin(progress * math.tau * 2.4) * 2.6
-        random_force = random.uniform(-1.0, 1.0) * 12.0 * math.sqrt(max(delta_time, 0.001))
-        damping = self.price_velocity * 1.65
+        current_delta = previous - self.market.target_price
+        article_delta = self.market.price_bias * 160
+        wave_delta = (
+            math.sin(progress * math.tau * 1.35) * 42
+            + math.sin(progress * math.tau * 3.6) * 18
+        )
+        noise_delta = random.uniform(-10, 10)
+        desired_delta = max(-125, min(135, article_delta + wave_delta + noise_delta))
+        easing = min(1.0, delta_time * 3.0)
+        new_delta = current_delta + (desired_delta - current_delta) * easing
 
-        self.price_velocity += (
-            trend_force + gravity_force + wave_force - damping
-        ) * delta_time + random_force
-        self.price_velocity = max(-38.0, min(38.0, self.price_velocity))
-
-        new_price = previous + self.price_velocity * delta_time
-        self.market.current_price = round(max(1000, new_price), 2)
+        stepped_price = round((self.market.target_price + new_delta) / PRICE_STEP_DOLLARS) * PRICE_STEP_DOLLARS
+        self.market.current_price = round(max(1000, stepped_price), 2)
 
     def _settle_market(self) -> None:
         self.market.active = False
@@ -394,7 +400,7 @@ class BitcoinPredictionGame(arcade.Window):
     def _contract_price(self, side: str) -> int:
         gap = self.market.current_price - self.market.target_price
         progress = self.market.elapsed_seconds / MARKET_DURATION_SECONDS
-        price_scale = max(7.0, 32.0 * (1 - progress * 0.65))
+        price_scale = max(35.0, 95.0 * (1 - progress * 0.55))
         score = gap / price_scale
         score = max(-6.0, min(6.0, score))
         up_probability = 1 / (1 + math.exp(-score))
@@ -434,7 +440,7 @@ class BitcoinPredictionGame(arcade.Window):
                 self.tutorial_active = False
                 self.market_transition = 0.0
                 self.status_message = (
-                    f"Welcome, {self._player_call_name()}. Read the article, choose Up or Down, "
+                    f"Welcome, {self._player_call_name()}. Read the articles, choose Up or Down, "
                     "then buy to start the tutorial market."
                 )
             return
@@ -799,7 +805,7 @@ class BitcoinPredictionGame(arcade.Window):
         arcade.draw_lbwh_rectangle_filled(left, bottom + height - 74, 64, 64, ORANGE)
         arcade.draw_text("B", left + 32, bottom + height - 42, WHITE, 34, bold=True, anchor_x="center", anchor_y="center")
         arcade.draw_text("BTC Up or Down 15s", left + 88, bottom + height - 31, TEXT, 25, bold=True)
-        subtitle = "Read the article, pick a side, then Buy starts the 15-second market"
+        subtitle = "Read the articles, pick a side, then watch $5 Bitcoin ticks for 15 seconds"
         if self.market.active:
             subtitle = "Live simulated Bitcoin market"
         elif self.market.settled:
@@ -856,9 +862,9 @@ class BitcoinPredictionGame(arcade.Window):
             arcade.draw_line(left, y, left + width - 24, y, grid_color, 1)
 
         prices = self.market.history
-        chart_min = min(prices + [self.market.target_price])
-        chart_max = max(prices + [self.market.target_price])
-        padding = max(8, (chart_max - chart_min) * 0.18)
+        chart_min = min(prices + [self.market.target_price - 75])
+        chart_max = max(prices + [self.market.target_price + 125])
+        padding = max(10, (chart_max - chart_min) * 0.08)
         low = chart_min - padding
         high = chart_max + padding
         span = max(1, high - low)
@@ -988,30 +994,55 @@ class BitcoinPredictionGame(arcade.Window):
     def _draw_news_cards(self) -> None:
         left = 70
         bottom = 46
-        card_width = 900
+        total_width = 900
+        gap = 16
+        card_width = (total_width - gap * 2) / 3
         card_height = 152
 
-        arcade.draw_text("Bitcoin article", left, bottom + card_height + 22, TEXT, 17, bold=True)
-        arcade.draw_text("Read before choosing. No automatic conclusion is shown.", left + 170, bottom + card_height + 23, MUTED, 12)
-        self._draw_news_card(self.news_card, left, bottom, card_width, card_height)
+        arcade.draw_text("Bitcoin articles", left, bottom + card_height + 22, TEXT, 17, bold=True)
+        arcade.draw_text("Read the clues before choosing. No automatic conclusion is shown.", left + 180, bottom + card_height + 23, MUTED, 12)
+        for index, card in enumerate(self.news_cards):
+            card_left = left + index * (card_width + gap)
+            self._draw_news_card(card, card_left, bottom, card_width, card_height)
 
     def _draw_news_card(self, card: NewsCard, left: float, bottom: float, width: float, height: float) -> None:
         arcade.draw_lbwh_rectangle_filled(left, bottom, width, height, PANEL)
         arcade.draw_lbwh_rectangle_outline(left, bottom, width, height, BORDER, 1)
         arcade.draw_lbwh_rectangle_filled(left, bottom + height - 8, width, 8, BLUE)
 
-        arcade.draw_text(card.source, left + 20, bottom + height - 32, MUTED, 10, bold=True)
+        inset = 16
+        content_width = int(width - inset * 2)
+
+        arcade.draw_text(card.source, left + inset, bottom + height - 31, MUTED, 9, bold=True)
         arcade.draw_text(
-            f"Reliability {card.reliability:.2f}",
-            left + width - 20,
-            bottom + height - 32,
+            f"Reliability {card.reliability}%",
+            left + width - inset,
+            bottom + height - 31,
             MUTED,
-            10,
+            9,
             bold=True,
             anchor_x="right",
         )
-        arcade.draw_text(card.analysis_label, left + 20, bottom + height - 64, BLUE, 12, bold=True)
-        arcade.draw_text(card.headline, left + 20, bottom + 34, TEXT, 21, bold=True, width=int(width - 40), multiline=True)
+        arcade.draw_text(
+            card.analysis_label,
+            left + inset,
+            bottom + height - 62,
+            BLUE,
+            10,
+            bold=True,
+            width=content_width,
+            multiline=True,
+        )
+        arcade.draw_text(
+            card.headline,
+            left + inset,
+            bottom + 26,
+            TEXT,
+            14,
+            bold=True,
+            width=content_width,
+            multiline=True,
+        )
 
     def _draw_transition_overlay(self) -> None:
         if self.market_transition >= 1:
@@ -1037,7 +1068,7 @@ class BitcoinPredictionGame(arcade.Window):
             anchor_x="center",
         )
         arcade.draw_text(
-            "Read the article, choose a side, then start the round",
+            "Read the articles, choose a side, then start the round",
             WINDOW_WIDTH / 2,
             WINDOW_HEIGHT / 2 - 18,
             (141, 151, 166, text_alpha),
