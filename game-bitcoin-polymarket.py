@@ -72,6 +72,17 @@ class Position:
 
 
 @dataclass(frozen=True)
+class TradeRecord:
+    market: str
+    side: str
+    amount: int
+    entry_price_cents: int
+    result: str
+    profit_loss: float
+    balance_after: float
+
+
+@dataclass(frozen=True)
 class ClickZone:
     key: str
     left: float
@@ -205,6 +216,8 @@ class BitcoinPredictionGame(arcade.Window):
         self.selected_side = "Up"
         self.selected_amount = DEFAULT_ORDER_AMOUNT
         self.position: Position | None = None
+        self.trade_history: list[TradeRecord] = []
+        self.dashboard_active = False
         self.status_message = "Read the article, choose Up or Down, then buy to start the market."
         self.tick_accumulator = 0.0
         self.price_velocity = 0.0
@@ -253,6 +266,9 @@ class BitcoinPredictionGame(arcade.Window):
             return
         if self.tutorial_active:
             self._draw_tutorial_page()
+            return
+        if self.dashboard_active:
+            self._draw_dashboard()
             return
 
         self._draw_header()
@@ -320,14 +336,33 @@ class BitcoinPredictionGame(arcade.Window):
             payout = round(self.position.shares, 2)
             self.balance += payout
             self.position.resolved_result = "Won"
+            self._record_trade(winning_side, round(payout - self.position.amount, 2))
             self.status_message = (
                 f"{call_name}, {winning_side} wins. Your ${self.position.amount} position paid ${payout:,.2f}."
             )
         else:
             self.position.resolved_result = "Lost"
+            self._record_trade(winning_side, -float(self.position.amount))
             self.status_message = (
                 f"{call_name}, {winning_side} wins. Your {self.position.side} position expired at $0."
             )
+
+    def _record_trade(self, winning_side: str, profit_loss: float) -> None:
+        if self.position is None:
+            return
+
+        self.trade_history.insert(
+            0,
+            TradeRecord(
+                market="BTC Up or Down 15s",
+                side=self.position.side,
+                amount=self.position.amount,
+                entry_price_cents=self.position.entry_price_cents,
+                result="Won" if self.position.side == winning_side else "Lost",
+                profit_loss=profit_loss,
+                balance_after=self.balance,
+            ),
+        )
 
     def _buy_position(self) -> None:
         call_name = self._player_call_name()
@@ -402,6 +437,10 @@ class BitcoinPredictionGame(arcade.Window):
                     f"Welcome, {self._player_call_name()}. Read the article, choose Up or Down, "
                     "then buy to start the tutorial market."
                 )
+            return
+
+        if clicked_key == "dashboard_toggle":
+            self.dashboard_active = not self.dashboard_active
             return
 
         if clicked_key == "new_market":
@@ -669,15 +708,86 @@ class BitcoinPredictionGame(arcade.Window):
         arcade.draw_lbwh_rectangle_filled(310, WINDOW_HEIGHT - 58, 560, 36, PANEL_ALT)
         arcade.draw_text("Search simulated markets...", 334, WINDOW_HEIGHT - 41, MUTED_DARK, 13, anchor_y="center")
 
-        labels = ["Trending", "Crypto", "Breaking", "Macro", "Economy", "Tech", "More"]
-        x = 70
-        for label in labels:
-            color = BLUE if label == "Crypto" else MUTED
-            arcade.draw_text(label, x, WINDOW_HEIGHT - 104, color, 13, bold=label == "Crypto")
-            x += 124
+        self._draw_dashboard_button("Dashboard")
 
-        account_label = f"{self._player_call_name()}'s practice account - no real trading"
-        arcade.draw_text(account_label, WINDOW_WIDTH - 70, WINDOW_HEIGHT - 45, MUTED, 13, anchor_x="right", anchor_y="center")
+    def _draw_dashboard_button(self, label: str) -> None:
+        zone = ClickZone("dashboard_toggle", WINDOW_WIDTH - 216, WINDOW_HEIGHT - 62, 146, 38)
+        self.click_zones.append(zone)
+        button_color = BLUE if self.hovered_key == "dashboard_toggle" else PANEL_SOFT
+        arcade.draw_lbwh_rectangle_filled(zone.left, zone.bottom, zone.width, zone.height, button_color)
+        arcade.draw_lbwh_rectangle_outline(zone.left, zone.bottom, zone.width, zone.height, BORDER, 1)
+        arcade.draw_text(label, zone.center_x, zone.center_y + 1, TEXT, 14, bold=True, anchor_x="center", anchor_y="center")
+
+    def _draw_dashboard(self) -> None:
+        arcade.draw_lbwh_rectangle_filled(0, 0, WINDOW_WIDTH, WINDOW_HEIGHT, BACKGROUND)
+        arcade.draw_lbwh_rectangle_filled(0, WINDOW_HEIGHT - 74, WINDOW_WIDTH, 74, HEADER)
+        arcade.draw_line(0, WINDOW_HEIGHT - 74, WINDOW_WIDTH, WINDOW_HEIGHT - 74, BORDER, 1)
+        arcade.draw_text("PolyArcade", 70, WINDOW_HEIGHT - 45, TEXT, 24, bold=True, anchor_y="center")
+        arcade.draw_text("<>", 40, WINDOW_HEIGHT - 45, TEXT, 18, bold=True, anchor_y="center")
+        self._draw_dashboard_button("Back")
+
+        left = 96
+        top = WINDOW_HEIGHT - 128
+        arcade.draw_text("Dashboard", left, top, TEXT, 34, bold=True)
+        arcade.draw_text(
+            f"{self._player_call_name()}'s practice performance",
+            left,
+            top - 34,
+            MUTED,
+            14,
+        )
+
+        total_profit = sum(trade.profit_loss for trade in self.trade_history)
+        stat_cards = [
+            ("Current Balance", self._format_money(self.balance), TEXT),
+            ("Total P/L", self._format_delta(total_profit), GREEN if total_profit >= 0 else RED),
+            ("Past Trades", str(len(self.trade_history)), TEXT),
+        ]
+        for index, (label, value, value_color) in enumerate(stat_cards):
+            card_left = left + index * 286
+            arcade.draw_lbwh_rectangle_filled(card_left, top - 142, 248, 86, PANEL)
+            arcade.draw_lbwh_rectangle_outline(card_left, top - 142, 248, 86, BORDER, 1)
+            arcade.draw_text(label, card_left + 18, top - 88, MUTED, 12, bold=True)
+            arcade.draw_text(value, card_left + 18, top - 122, value_color, 24, bold=True)
+
+        table_left = left
+        table_bottom = 92
+        table_width = WINDOW_WIDTH - left * 2
+        table_height = 450
+        arcade.draw_lbwh_rectangle_filled(table_left, table_bottom, table_width, table_height, PANEL)
+        arcade.draw_lbwh_rectangle_outline(table_left, table_bottom, table_width, table_height, BORDER, 1)
+        arcade.draw_text("Past Trades", table_left + 24, table_bottom + table_height - 42, TEXT, 20, bold=True)
+
+        headers = [("Market", 24), ("Side", 360), ("Stake", 500), ("Entry", 630), ("Result", 760), ("P/L", 900), ("Balance", 1040)]
+        header_y = table_bottom + table_height - 82
+        arcade.draw_line(table_left, header_y - 12, table_left + table_width, header_y - 12, BORDER, 1)
+        for label, offset in headers:
+            arcade.draw_text(label, table_left + offset, header_y, MUTED, 11, bold=True)
+
+        if not self.trade_history:
+            arcade.draw_text(
+                "No settled trades yet. Play a market, wait for it to settle, then come back here.",
+                table_left + 24,
+                table_bottom + table_height / 2,
+                MUTED,
+                14,
+                width=int(table_width - 48),
+                multiline=True,
+            )
+            return
+
+        for index, trade in enumerate(self.trade_history[:8]):
+            row_y = header_y - 52 - index * 42
+            row_color = PANEL_ALT if index % 2 == 0 else PANEL
+            arcade.draw_lbwh_rectangle_filled(table_left + 1, row_y - 12, table_width - 2, 36, row_color)
+            pnl_color = GREEN if trade.profit_loss >= 0 else RED
+            arcade.draw_text(trade.market, table_left + 24, row_y, TEXT, 13, bold=True)
+            arcade.draw_text(trade.side, table_left + 360, row_y, TEXT, 13, bold=True)
+            arcade.draw_text(f"${trade.amount}", table_left + 500, row_y, TEXT, 13)
+            arcade.draw_text(f"{trade.entry_price_cents}c", table_left + 630, row_y, TEXT, 13)
+            arcade.draw_text(trade.result, table_left + 760, row_y, pnl_color, 13, bold=True)
+            arcade.draw_text(self._format_delta(trade.profit_loss), table_left + 900, row_y, pnl_color, 13, bold=True)
+            arcade.draw_text(self._format_money(trade.balance_after), table_left + 1040, row_y, TEXT, 13)
 
     def _draw_market(self) -> None:
         left = 70

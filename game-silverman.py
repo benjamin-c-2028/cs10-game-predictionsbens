@@ -52,6 +52,16 @@ class Rect:
         return (self.bottom + self.top) / 2
 
 
+@dataclass(frozen=True)
+class TradeRecord:
+    action: str
+    side: str
+    amount: int
+    price_cents: int
+    profit_loss: float
+    balance_after: float
+
+
 class PredictionMarketWindow(arcade.Window):
     def __init__(self) -> None:
         super().__init__(
@@ -111,6 +121,8 @@ class PredictionMarketWindow(arcade.Window):
         self.amount = 0
         self.cash_balance = STARTING_CASH
         self.purchased_total = 0
+        self.trade_history: list[TradeRecord] = []
+        self.dashboard_active = False
         self.status_message = "Live demo is updating. Select a side and build a mock position."
 
         self.amount_steps = [1, 5, 10, 100]
@@ -119,6 +131,7 @@ class PredictionMarketWindow(arcade.Window):
         self.amount_buttons: dict[int, Rect] = {}
         self.amount_input_rect = Rect(0, 0, 0, 0)
         self.trade_button_rect = Rect(0, 0, 0, 0)
+        self.dashboard_button_rect = Rect(0, 0, 0, 0)
         self.amount_input_text = ""
         self.amount_input_active = False
         self.buy_sound = arcade.load_sound(str(BUY_SOUND_PATH)) if BUY_SOUND_PATH.exists() else None
@@ -196,7 +209,7 @@ class PredictionMarketWindow(arcade.Window):
         ]
 
     def on_update(self, delta_time: float) -> None:
-        if self.onboarding_active or self.tutorial_active:
+        if self.onboarding_active or self.tutorial_active or self.dashboard_active:
             return
 
         self.market_tick_accumulator += delta_time
@@ -215,6 +228,9 @@ class PredictionMarketWindow(arcade.Window):
             return
         if self.tutorial_active:
             self._draw_tutorial_page()
+            return
+        if self.dashboard_active:
+            self._draw_dashboard()
             return
 
         self._draw_header()
@@ -453,21 +469,16 @@ class PredictionMarketWindow(arcade.Window):
     def _draw_header(self) -> None:
         width = self.width
         header_height = 84
-        category_height = 44
 
         arcade.draw_rect_filled(
             arcade.XYWH(width / 2, self.height - header_height / 2, width, header_height),
             self.colors["panel"],
         )
-        arcade.draw_rect_filled(
-            arcade.XYWH(width / 2, self.height - header_height - category_height / 2, width, category_height),
-            self.colors["bg"],
-        )
         arcade.draw_line(
             0,
-            self.height - header_height - category_height,
+            self.height - header_height,
             width,
-            self.height - header_height - category_height,
+            self.height - header_height,
             self.colors["panel_border"],
             1,
         )
@@ -502,37 +513,16 @@ class PredictionMarketWindow(arcade.Window):
             font_name=self.font_primary,
         )
 
-        categories = ["Trending", "Breaking", "Energy", "Politics", "Sports", "Crypto", "Economy", "Weather", "More"]
-        x = 34
-        for label in categories:
-            arcade.draw_text(
-                label,
-                x,
-                self.height - 119,
-                self.colors["muted"],
-                13,
-                font_name=self.font_primary,
-                bold=label == "Trending",
-            )
-            x += 104 if label not in {"Economy", "Trending"} else 110
+        self._draw_dashboard_button("Dashboard")
 
+    def _draw_dashboard_button(self, label: str) -> None:
+        self.dashboard_button_rect = Rect(self.width - 178, self.width - 40, self.height - 72, self.height - 26)
+        button_color = self.colors["accent_blue"]
+        self._draw_rounded_panel(self.dashboard_button_rect, button_color, border_color=self.colors["panel_border"])
         arcade.draw_text(
-            "Log In",
-            width - 220,
-            self.height - 56,
-            self.colors["accent_blue"],
-            16,
-            font_name=self.font_primary,
-            bold=True,
-        )
-
-        signup = Rect(width - 138, width - 40, self.height - 72, self.height - 26)
-        self._draw_rounded_panel(signup, self.colors["accent_blue"])
-        account_label = self._player_call_name() if self.player_full_name else "Sign Up"
-        arcade.draw_text(
-            account_label,
-            signup.center_x,
-            signup.center_y - 9,
+            label,
+            self.dashboard_button_rect.center_x,
+            self.dashboard_button_rect.center_y - 8,
             self.colors["text"],
             15,
             font_name=self.font_primary,
@@ -540,8 +530,83 @@ class PredictionMarketWindow(arcade.Window):
             bold=True,
         )
 
+    def _draw_dashboard(self) -> None:
+        width = self.width
+        header_height = 84
+        arcade.draw_rect_filled(arcade.XYWH(width / 2, self.height / 2, width, self.height), self.colors["bg"])
+        arcade.draw_rect_filled(
+            arcade.XYWH(width / 2, self.height - header_height / 2, width, header_height),
+            self.colors["panel"],
+        )
+        arcade.draw_line(0, self.height - header_height, width, self.height - header_height, self.colors["panel_border"], 1)
+        arcade.draw_text("Consensus Market", 36, self.height - 55, self.colors["text"], 21, font_name=self.font_primary, bold=True)
+        arcade.draw_text("<>", 16, self.height - 56, self.colors["text"], 19, font_name=self.font_primary, bold=True)
+        self._draw_dashboard_button("Back")
+
+        left = 54
+        top = self.height - 126
+        arcade.draw_text("Dashboard", left, top, self.colors["text"], 32, font_name=self.font_primary, bold=True)
+        arcade.draw_text(
+            f"{self._player_call_name()}'s mock trading history",
+            left,
+            top - 32,
+            self.colors["muted"],
+            14,
+            font_name=self.font_primary,
+        )
+
+        total_profit = sum(trade.profit_loss for trade in self.trade_history)
+        cards = [
+            ("Current Balance", self._format_whole_dollars(self.cash_balance), self.colors["text"]),
+            ("Total P/L", self._format_signed_dollars(total_profit), self.colors["accent_green"] if total_profit >= 0 else self.colors["accent_red"]),
+            ("Purchased", self._format_whole_dollars(self.purchased_total), self.colors["text"]),
+            ("Trades", str(len(self.trade_history)), self.colors["text"]),
+        ]
+        card_width = (self.width - left * 2 - 42) / 4
+        for index, (label, value, value_color) in enumerate(cards):
+            card = Rect(left + index * (card_width + 14), left + index * (card_width + 14) + card_width, top - 136, top - 54)
+            self._draw_rounded_panel(card, self.colors["panel"], border_color=self.colors["panel_border"])
+            arcade.draw_text(label, card.left + 16, card.top - 28, self.colors["muted"], 12, font_name=self.font_primary, bold=True)
+            arcade.draw_text(value, card.left + 16, card.bottom + 18, value_color, 23, font_name=self.font_primary, bold=True)
+
+        table = Rect(left, self.width - left, 62, top - 174)
+        self._draw_rounded_panel(table, self.colors["panel"], border_color=self.colors["panel_border"])
+        arcade.draw_text("Past Trades", table.left + 22, table.top - 40, self.colors["text"], 20, font_name=self.font_primary, bold=True)
+
+        columns = [("Action", 22), ("Side", 164), ("Amount", 288), ("Price", 424), ("P/L", 552), ("Balance", 708)]
+        header_y = table.top - 82
+        arcade.draw_line(table.left, header_y - 14, table.right, header_y - 14, self.colors["panel_border"], 1)
+        for label, offset in columns:
+            arcade.draw_text(label, table.left + offset, header_y, self.colors["muted"], 11, font_name=self.font_primary, bold=True)
+
+        if not self.trade_history:
+            arcade.draw_text(
+                "No filled mock trades yet. Return to the market, choose a side and amount, then click Buy.",
+                table.left + 22,
+                table.center_y,
+                self.colors["muted"],
+                14,
+                font_name=self.font_primary,
+                width=int(table.width - 44),
+                multiline=True,
+            )
+            return
+
+        for index, trade in enumerate(self.trade_history[:9]):
+            row_y = header_y - 52 - index * 38
+            row = Rect(table.left + 1, table.right - 1, row_y - 12, row_y + 22)
+            if index % 2 == 0:
+                self._draw_rounded_panel(row, self.colors["panel_alt"])
+            pnl_color = self.colors["accent_green"] if trade.profit_loss >= 0 else self.colors["accent_red"]
+            arcade.draw_text(trade.action, table.left + 22, row_y, self.colors["text"], 13, font_name=self.font_primary, bold=True)
+            arcade.draw_text(trade.side, table.left + 164, row_y, self.colors["text"], 13, font_name=self.font_primary)
+            arcade.draw_text(self._format_whole_dollars(trade.amount), table.left + 288, row_y, self.colors["text"], 13, font_name=self.font_primary)
+            arcade.draw_text(f"{trade.price_cents}c", table.left + 424, row_y, self.colors["text"], 13, font_name=self.font_primary)
+            arcade.draw_text(self._format_signed_dollars(trade.profit_loss), table.left + 552, row_y, pnl_color, 13, font_name=self.font_primary, bold=True)
+            arcade.draw_text(self._format_whole_dollars(trade.balance_after), table.left + 708, row_y, self.colors["text"], 13, font_name=self.font_primary)
+
     def _draw_main_layout(self) -> None:
-        content_top = self.height - 148
+        content_top = self.height - 104
         left_margin = 28
         gap = 18
         sidebar_width = 360
@@ -967,6 +1032,29 @@ class PredictionMarketWindow(arcade.Window):
         self.tutorial_active = True
         self.status_message = "Tutorial opened."
 
+    def _estimate_trade_profit_loss(self, action: str, side: str, amount: int, price_cents: int) -> float:
+        side_matches_market = (side == "Up" and self.price_delta >= 0) or (side == "Down" and self.price_delta < 0)
+        price_edge = abs(price_cents - 50) / 90
+        move_edge = abs(self.price_delta) / max(1, self.price_to_beat) * 5
+        strength = max(0.03, min(0.28, price_edge + move_edge))
+        profit_loss = amount * strength if side_matches_market else -amount * strength
+        if action == "Sell":
+            profit_loss *= -1
+        return round(profit_loss, 2)
+
+    def _record_trade(self, action: str, side: str, amount: int, price_cents: int, profit_loss: float) -> None:
+        self.trade_history.insert(
+            0,
+            TradeRecord(
+                action=action,
+                side=side,
+                amount=amount,
+                price_cents=price_cents,
+                profit_loss=profit_loss,
+                balance_after=self.cash_balance,
+            ),
+        )
+
     def on_mouse_press(self, x: float, y: float, button: int, modifiers: int) -> None:
         del button, modifiers
 
@@ -985,6 +1073,16 @@ class PredictionMarketWindow(arcade.Window):
                     f"Welcome, {self._player_call_name()}. Pick Up or Down, choose an amount, "
                     "and place a mock order in the tutorial market."
                 )
+            return
+
+        if self.dashboard_active:
+            if self.dashboard_button_rect.contains(x, y):
+                self.dashboard_active = False
+            return
+
+        if self.dashboard_button_rect.contains(x, y):
+            self.dashboard_active = True
+            self.amount_input_active = False
             return
 
         for mode, rect in self.trade_mode_buttons.items():
@@ -1027,16 +1125,25 @@ class PredictionMarketWindow(arcade.Window):
             elif self.trade_mode == "Sell" and trade_amount > self.purchased_total:
                 self.status_message = f"{self._player_call_name()}, you only have {self._format_whole_dollars(self.purchased_total)} purchased to sell."
             else:
+                selected_price = self.contract_prices[self.trade_side]
                 if self.trade_mode == "Buy":
                     self.cash_balance -= trade_amount
                     self.purchased_total += trade_amount
                 else:
                     self.cash_balance += trade_amount
                     self.purchased_total -= trade_amount
+                profit_loss = self._estimate_trade_profit_loss(
+                    self.trade_mode,
+                    self.trade_side,
+                    trade_amount,
+                    selected_price,
+                )
+                self._record_trade(self.trade_mode, self.trade_side, trade_amount, selected_price, profit_loss)
                 self._play_trade_sound()
                 self.status_message = (
                     f"{self._player_call_name()}, {self.trade_mode} order filled for {self._format_whole_dollars(trade_amount)} on "
-                    f"{self.trade_side} at {self.contract_prices[self.trade_side]}¢. "
+                    f"{self.trade_side} at {selected_price}¢. "
+                    f"P/L: {self._format_signed_dollars(profit_loss)}. "
                     f"Cash: {self._format_whole_dollars(self.cash_balance)}. "
                     f"Purchased: {self._format_whole_dollars(self.purchased_total)}."
                 )
@@ -1080,6 +1187,9 @@ class PredictionMarketWindow(arcade.Window):
             return
 
         if self.tutorial_active:
+            return
+
+        if self.dashboard_active:
             return
 
         if not self.amount_input_active:
