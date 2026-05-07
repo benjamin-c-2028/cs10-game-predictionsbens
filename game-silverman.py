@@ -8,13 +8,14 @@ from dataclasses import dataclass
 
 import arcade
 
+from polymarket_tutorial import SIMPLE_TUTORIAL_ARTICLES, TUTORIAL_CLICK_TARGETS
+
 WINDOW_WIDTH = 1360
 WINDOW_HEIGHT = 780
 WINDOW_TITLE = "Arcade Prediction Market"
 BUY_SOUND_PATH = Path(__file__).resolve().parent / "asset-game" / "sounds" / "buy_cash_register.ogg"
 STARTING_CASH = 1000
 MAX_FULL_NAME_CHARS = 32
-TUTORIAL_FAKE_PASSWORD = "practice-demo"
 
 
 def hex_color(value: str) -> arcade.types.Color:
@@ -59,6 +60,10 @@ class PredictionMarketWindow(arcade.Window):
             WINDOW_TITLE,
             resizable=True,
             update_rate=1 / 60,
+            draw_rate=1 / 60,
+            antialiasing=True,
+            samples=4,
+            vsync=True,
         )
         self.set_minimum_size(1100, 680)
 
@@ -84,12 +89,13 @@ class PredictionMarketWindow(arcade.Window):
 
         self.font_primary = "Arial"
         self.onboarding_active = True
+        self.tutorial_active = False
         self.onboarding_name = ""
         self.onboarding_name_active = True
         self.onboarding_message = "Type your full name to create a practice identity."
         self.onboarding_name_rect = Rect(0, 0, 0, 0)
-        self.onboarding_password_rect = Rect(0, 0, 0, 0)
         self.onboarding_start_rect = Rect(0, 0, 0, 0)
+        self.tutorial_continue_rect = Rect(0, 0, 0, 0)
         self.player_full_name = ""
         self.market_title = "WTI Daily Up or Down"
         self.base_price = 105.10
@@ -190,7 +196,7 @@ class PredictionMarketWindow(arcade.Window):
         ]
 
     def on_update(self, delta_time: float) -> None:
-        if self.onboarding_active:
+        if self.onboarding_active or self.tutorial_active:
             return
 
         self.market_tick_accumulator += delta_time
@@ -206,6 +212,9 @@ class PredictionMarketWindow(arcade.Window):
 
         if self.onboarding_active:
             self._draw_onboarding()
+            return
+        if self.tutorial_active:
+            self._draw_tutorial_page()
             return
 
         self._draw_header()
@@ -274,9 +283,9 @@ class PredictionMarketWindow(arcade.Window):
         )
 
         steps = [
-            ("Step 1", "Enter your full name", "This is what the game calls you during the tutorial."),
-            ("Step 2", "Use the preset fake password", "It is already filled in and never written to a file."),
-            ("Step 3", "Practice a prediction", "Pick Up or Down, choose an amount, and place a mock order."),
+            ("Step 1", "Enter your full name", "Use your real full name for the practice identity."),
+            ("Step 2", "Click Start Practice Tutorial", "The button is the only way to move to the next tutorial page."),
+            ("Step 3", "Follow the arrows", "The next page points to the buttons that operate the game."),
         ]
         for index, (step, title, detail) in enumerate(steps):
             y = panel.top - 188 - index * 82
@@ -285,7 +294,7 @@ class PredictionMarketWindow(arcade.Window):
             arcade.draw_text(detail, panel.left + 48, y - 34, self.colors["muted"], 12, font_name=self.font_primary, width=390, multiline=True)
 
         form_left = panel.left + panel.width - 396
-        form_top = panel.top - 172
+        form_top = panel.top - 194
         arcade.draw_text("Create Practice Identity", form_left, form_top + 66, self.colors["text"], 20, font_name=self.font_primary, bold=True)
         arcade.draw_text("Full Name", form_left, form_top + 30, self.colors["muted"], 12, font_name=self.font_primary, bold=True)
 
@@ -302,21 +311,18 @@ class PredictionMarketWindow(arcade.Window):
             name_display = f"{name_display}|"
         arcade.draw_text(name_display, self.onboarding_name_rect.left + 16, self.onboarding_name_rect.center_y - 8, name_color, 15, font_name=self.font_primary, bold=True)
 
-        arcade.draw_text("Fake Password", form_left, form_top - 102, self.colors["muted"], 12, font_name=self.font_primary, bold=True)
-        self.onboarding_password_rect = Rect(form_left, form_left + 332, form_top - 176, form_top - 118)
-        self._draw_rounded_panel(self.onboarding_password_rect, self.colors["search"], border_color=self.colors["panel_border"])
         arcade.draw_text(
-            TUTORIAL_FAKE_PASSWORD,
-            self.onboarding_password_rect.left + 16,
-            self.onboarding_password_rect.center_y - 8,
+            "No password is needed. This tutorial only stores your name in memory for this run.",
+            form_left,
+            form_top - 84,
             self.colors["muted"],
-            15,
+            12,
             font_name=self.font_primary,
-            bold=True,
+            width=332,
+            multiline=True,
         )
-        arcade.draw_text("Preset for practice. Nothing is saved.", form_left, form_top - 204, self.colors["muted_soft"], 11, font_name=self.font_primary)
 
-        self.onboarding_start_rect = Rect(form_left, form_left + 332, panel.bottom + 54, panel.bottom + 108)
+        self.onboarding_start_rect = Rect(form_left, form_left + 332, panel.bottom + 96, panel.bottom + 150)
         can_start = bool(self.onboarding_name.strip())
         button_color = self.colors["accent_green"] if can_start else self.colors["panel_soft"]
         self._draw_rounded_panel(self.onboarding_start_rect, button_color, border_color=self.colors["panel_border"])
@@ -330,7 +336,119 @@ class PredictionMarketWindow(arcade.Window):
             anchor_x="center",
             bold=True,
         )
-        arcade.draw_text(self.onboarding_message, form_left, panel.bottom + 22, self.colors["muted"], 12, font_name=self.font_primary, width=332, multiline=True)
+        arcade.draw_text(self.onboarding_message, form_left, panel.bottom + 62, self.colors["muted"], 12, font_name=self.font_primary, width=332, multiline=True)
+
+    def _draw_tutorial_page(self) -> None:
+        arcade.draw_rect_filled(
+            arcade.XYWH(self.width / 2, self.height / 2, self.width, self.height),
+            self.colors["bg"],
+        )
+        header_height = 84
+        arcade.draw_rect_filled(
+            arcade.XYWH(self.width / 2, self.height - header_height / 2, self.width, header_height),
+            self.colors["panel"],
+        )
+        arcade.draw_line(0, self.height - header_height, self.width, self.height - header_height, self.colors["panel_border"], 1)
+        arcade.draw_text("Polymarket Practice", 36, self.height - 55, self.colors["text"], 22, font_name=self.font_primary, bold=True)
+        arcade.draw_text(
+            f"Welcome, {self._player_call_name()}",
+            self.width - 42,
+            self.height - 55,
+            self.colors["muted"],
+            13,
+            font_name=self.font_primary,
+            anchor_x="right",
+        )
+
+        panel_width = min(1160, self.width - 80)
+        panel_height = min(580, self.height - 150)
+        panel = Rect(
+            (self.width - panel_width) / 2,
+            (self.width + panel_width) / 2,
+            (self.height - panel_height) / 2 - 14,
+            (self.height + panel_height) / 2 - 14,
+        )
+        self._draw_rounded_panel(panel, self.colors["panel"], border_color=self.colors["panel_border"])
+        arcade.draw_rect_filled(
+            arcade.XYWH(panel.center_x, panel.top - 4, panel.width, 8),
+            self.colors["accent_blue"],
+        )
+
+        arcade.draw_text("Tutorial: read, choose, buy", panel.left + 36, panel.top - 66, self.colors["text"], 30, font_name=self.font_primary, bold=True)
+        arcade.draw_text(
+            "Simple articles are practice clues. The arrows show which buttons make the game run.",
+            panel.left + 38,
+            panel.top - 102,
+            self.colors["muted"],
+            15,
+            font_name=self.font_primary,
+        )
+
+        article_left = panel.left + 36
+        article_top = panel.top - 150
+        for index, article in enumerate(SIMPLE_TUTORIAL_ARTICLES):
+            top = article_top - index * 116
+            card = Rect(article_left, article_left + 520, top - 88, top + 8)
+            self._draw_rounded_panel(card, self.colors["panel_alt"], border_color=self.colors["panel_border"])
+            bar_color = self.colors["accent_red"] if index == 1 else self.colors["accent_blue"]
+            arcade.draw_rect_filled(arcade.XYWH(card.left + 3, card.center_y, 6, card.height), bar_color)
+            arcade.draw_text(article.source, card.left + 20, top - 12, self.colors["muted"], 10, font_name=self.font_primary, bold=True)
+            arcade.draw_text(article.headline, card.left + 20, top - 38, self.colors["text"], 16, font_name=self.font_primary, bold=True, width=470, multiline=True)
+            arcade.draw_text(article.summary, card.left + 20, top - 68, self.colors["muted"], 12, font_name=self.font_primary, width=470, multiline=True)
+
+        guide = Rect(panel.right - 540, panel.right - 36, panel.bottom + 90, panel.top - 128)
+        self._draw_rounded_panel(guide, self.colors["bg"], border_color=self.colors["panel_border"])
+        arcade.draw_text("Buttons to click", guide.left + 30, guide.top - 46, self.colors["text"], 22, font_name=self.font_primary, bold=True)
+
+        up_button = Rect(guide.right - 226, guide.right - 132, guide.top - 110, guide.top - 64)
+        down_button = Rect(guide.right - 120, guide.right - 26, guide.top - 110, guide.top - 64)
+        amount_button = Rect(guide.right - 182, guide.right - 70, guide.top - 214, guide.top - 164)
+        buy_button = Rect(guide.right - 226, guide.right - 26, guide.bottom + 44, guide.bottom + 98)
+        buttons = [
+            (up_button, "Up", self.colors["accent_green"]),
+            (down_button, "Down", self.colors["accent_red"]),
+            (amount_button, "$25", self.colors["panel_soft"]),
+            (buy_button, "Buy", self.colors["accent_green"]),
+        ]
+        for rect, label, color in buttons:
+            self._draw_rounded_panel(rect, color, border_color=self.colors["panel_border"])
+            arcade.draw_text(label, rect.center_x, rect.center_y - 7, self.colors["text"], 15, font_name=self.font_primary, anchor_x="center", bold=True)
+
+        targets = [
+            (TUTORIAL_CLICK_TARGETS[0], up_button.center_x, up_button.center_y),
+            (TUTORIAL_CLICK_TARGETS[1], amount_button.center_x, amount_button.center_y),
+            (TUTORIAL_CLICK_TARGETS[2], buy_button.center_x, buy_button.center_y),
+        ]
+        for index, (target, button_x, button_y) in enumerate(targets):
+            text_x = guide.left + 30
+            text_y = guide.top - 90 - index * 96
+            arcade.draw_text(target.button_label, text_x, text_y + 30, self.colors["accent_blue"], 12, font_name=self.font_primary, bold=True)
+            arcade.draw_text(target.title, text_x, text_y + 7, self.colors["text"], 16, font_name=self.font_primary, bold=True)
+            arcade.draw_text(target.detail, text_x, text_y - 18, self.colors["muted"], 12, font_name=self.font_primary, width=190, multiline=True)
+            self._draw_arrow(text_x + 204, text_y + 8, button_x - 10, button_y, self.colors["accent_blue"])
+
+        self.tutorial_continue_rect = Rect(panel.right - 326, panel.right - 36, panel.bottom + 22, panel.bottom + 76)
+        self._draw_rounded_panel(self.tutorial_continue_rect, self.colors["accent_green"], border_color=self.colors["panel_border"])
+        arcade.draw_text(
+            "Open Practice Market",
+            self.tutorial_continue_rect.center_x,
+            self.tutorial_continue_rect.center_y - 7,
+            self.colors["text"],
+            16,
+            font_name=self.font_primary,
+            anchor_x="center",
+            bold=True,
+        )
+
+    def _draw_arrow(self, start_x: float, start_y: float, end_x: float, end_y: float, color: arcade.Color) -> None:
+        arcade.draw_line(start_x, start_y, end_x, end_y, color, 3)
+        angle = math.atan2(end_y - start_y, end_x - start_x)
+        size = 10
+        left_angle = angle + math.pi * 0.78
+        right_angle = angle - math.pi * 0.78
+        left = (end_x + math.cos(left_angle) * size, end_y + math.sin(left_angle) * size)
+        right = (end_x + math.cos(right_angle) * size, end_y + math.sin(right_angle) * size)
+        arcade.draw_triangle_filled(end_x, end_y, left[0], left[1], right[0], right[1], color)
 
     def _draw_header(self) -> None:
         width = self.width
@@ -846,10 +964,8 @@ class PredictionMarketWindow(arcade.Window):
         self.onboarding_name = full_name
         self.onboarding_name_active = False
         self.onboarding_active = False
-        self.status_message = (
-            f"Welcome, {self._player_call_name()}. Pick Up or Down, choose an amount, "
-            "and place a mock order in the tutorial market."
-        )
+        self.tutorial_active = True
+        self.status_message = "Tutorial opened."
 
     def on_mouse_press(self, x: float, y: float, button: int, modifiers: int) -> None:
         del button, modifiers
@@ -858,11 +974,17 @@ class PredictionMarketWindow(arcade.Window):
             if self.onboarding_name_rect.contains(x, y):
                 self.onboarding_name_active = True
                 self.onboarding_message = "Type your full name, like Benjamin Silverman."
-            elif self.onboarding_password_rect.contains(x, y):
-                self.onboarding_name_active = False
-                self.onboarding_message = "The fake password is already set for practice mode and is never saved."
             elif self.onboarding_start_rect.contains(x, y):
                 self._finish_onboarding()
+            return
+
+        if self.tutorial_active:
+            if self.tutorial_continue_rect.contains(x, y):
+                self.tutorial_active = False
+                self.status_message = (
+                    f"Welcome, {self._player_call_name()}. Pick Up or Down, choose an amount, "
+                    "and place a mock order in the tutorial market."
+                )
             return
 
         for mode, rect in self.trade_mode_buttons.items():
@@ -930,7 +1052,7 @@ class PredictionMarketWindow(arcade.Window):
             for character in text:
                 if character in allowed and len(self.onboarding_name) < MAX_FULL_NAME_CHARS:
                     self.onboarding_name += character
-            self.onboarding_message = "Press Enter or click Start Practice Tutorial."
+            self.onboarding_message = "Click Start Practice Tutorial when your name is ready."
             return
 
         if not self.amount_input_active or not text.isdigit():
@@ -952,9 +1074,12 @@ class PredictionMarketWindow(arcade.Window):
                 self.onboarding_name = self.onboarding_name[:-1]
                 self.onboarding_message = "Type your full name to create a practice identity."
             elif symbol in (arcade.key.ENTER, arcade.key.RETURN):
-                self._finish_onboarding()
+                self.onboarding_message = "Use the Start Practice Tutorial button to continue."
             elif symbol == arcade.key.TAB:
                 self.onboarding_name_active = True
+            return
+
+        if self.tutorial_active:
             return
 
         if not self.amount_input_active:

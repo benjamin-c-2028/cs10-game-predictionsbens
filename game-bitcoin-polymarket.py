@@ -8,6 +8,8 @@ import random
 
 import arcade
 
+from polymarket_tutorial import SIMPLE_TUTORIAL_ARTICLES, TUTORIAL_CLICK_TARGETS
+
 
 WINDOW_WIDTH = 1440
 WINDOW_HEIGHT = 880
@@ -20,7 +22,6 @@ PRICE_TICK_SECONDS = 1 / 30
 PRICE_HISTORY_LIMIT = 180
 MARKET_TRANSITION_SPEED = 3.4
 MAX_FULL_NAME_CHARS = 32
-TUTORIAL_FAKE_PASSWORD = "practice-demo"
 
 BACKGROUND = (14, 18, 23)
 HEADER = (17, 22, 28)
@@ -188,10 +189,14 @@ class BitcoinPredictionGame(arcade.Window):
             resizable=False,
             update_rate=1 / 60,
             draw_rate=1 / 60,
+            antialiasing=True,
+            samples=4,
+            vsync=True,
         )
         arcade.set_background_color(BACKGROUND)
 
         self.onboarding_active = True
+        self.tutorial_active = False
         self.onboarding_name = ""
         self.onboarding_name_active = True
         self.onboarding_message = "Type your full name to create a practice identity."
@@ -246,6 +251,9 @@ class BitcoinPredictionGame(arcade.Window):
         if self.onboarding_active:
             self._draw_onboarding()
             return
+        if self.tutorial_active:
+            self._draw_tutorial_page()
+            return
 
         self._draw_header()
         self._draw_market()
@@ -254,7 +262,7 @@ class BitcoinPredictionGame(arcade.Window):
         self._draw_transition_overlay()
 
     def on_update(self, delta_time: float) -> None:
-        if self.onboarding_active:
+        if self.onboarding_active or self.tutorial_active:
             return
 
         self.market_transition = min(
@@ -386,6 +394,15 @@ class BitcoinPredictionGame(arcade.Window):
         if self.onboarding_active:
             self._handle_onboarding_click(clicked_key)
             return
+        if self.tutorial_active:
+            if clicked_key == "tutorial_continue":
+                self.tutorial_active = False
+                self.market_transition = 0.0
+                self.status_message = (
+                    f"Welcome, {self._player_call_name()}. Read the article, choose Up or Down, "
+                    "then buy to start the tutorial market."
+                )
+            return
 
         if clicked_key == "new_market":
             self.market = self._new_market()
@@ -412,7 +429,7 @@ class BitcoinPredictionGame(arcade.Window):
         for character in text:
             if character in allowed and len(self.onboarding_name) < MAX_FULL_NAME_CHARS:
                 self.onboarding_name += character
-        self.onboarding_message = "Press Enter or click Start Practice Tutorial."
+        self.onboarding_message = "Click Start Practice Tutorial when your name is ready."
 
     def on_key_press(self, symbol: int, modifiers: int) -> None:
         del modifiers
@@ -423,7 +440,7 @@ class BitcoinPredictionGame(arcade.Window):
             self.onboarding_name = self.onboarding_name[:-1]
             self.onboarding_message = "Type your full name to create a practice identity."
         elif symbol in (arcade.key.ENTER, arcade.key.RETURN):
-            self._finish_onboarding()
+            self.onboarding_message = "Use the Start Practice Tutorial button to continue."
         elif symbol == arcade.key.TAB:
             self.onboarding_name_active = True
 
@@ -431,9 +448,6 @@ class BitcoinPredictionGame(arcade.Window):
         if clicked_key == "onboard_name":
             self.onboarding_name_active = True
             self.onboarding_message = "Type your full name, like Benjamin Silverman."
-        elif clicked_key == "onboard_password":
-            self.onboarding_name_active = False
-            self.onboarding_message = "The fake password is already set for practice mode and is never saved."
         elif clicked_key == "onboard_start":
             self._finish_onboarding()
 
@@ -448,11 +462,8 @@ class BitcoinPredictionGame(arcade.Window):
         self.onboarding_name = full_name
         self.onboarding_name_active = False
         self.onboarding_active = False
-        self.market_transition = 0.0
-        self.status_message = (
-            f"Welcome, {self._player_call_name()}. Read the article, choose Up or Down, "
-            "then buy to start the tutorial market."
-        )
+        self.tutorial_active = True
+        self.status_message = "Tutorial opened."
 
     def _player_call_name(self) -> str:
         if not self.player_full_name:
@@ -493,9 +504,9 @@ class BitcoinPredictionGame(arcade.Window):
         )
 
         steps = [
-            ("1", "Enter your full name", "This is what the game calls you during the tutorial."),
-            ("2", "Use the preset fake password", "It is already filled in and never written to a file."),
-            ("3", "Practice a prediction", "Read the article, pick Up or Down, then buy a mock position."),
+            ("1", "Enter your full name", "Use your real full name for the practice identity."),
+            ("2", "Click Start Practice Tutorial", "The button is the only way to move to the next tutorial page."),
+            ("3", "Follow the arrows", "The next page points to the buttons that operate the game."),
         ]
         for index, (number, title, detail) in enumerate(steps):
             y = panel_bottom + 370 - index * 92
@@ -506,7 +517,7 @@ class BitcoinPredictionGame(arcade.Window):
             arcade.draw_text(detail, panel_left + 110, y - 10, MUTED, 13, width=390, multiline=True)
 
         form_left = panel_left + 570
-        form_top = panel_bottom + 402
+        form_top = panel_bottom + 372
         arcade.draw_text("Create Practice Identity", form_left, form_top + 74, TEXT, 21, bold=True)
         arcade.draw_text("Full Name", form_left, form_top + 38, MUTED, 12, bold=True)
 
@@ -525,21 +536,17 @@ class BitcoinPredictionGame(arcade.Window):
             name_display = f"{name_display}|"
         arcade.draw_text(name_display, name_zone.left + 18, name_zone.center_y - 8, name_color, 16, bold=True)
 
-        arcade.draw_text("Fake Password", form_left, form_top - 88, MUTED, 12, bold=True)
-        password_zone = ClickZone("onboard_password", form_left, form_top - 158, 352, 58)
-        self.click_zones.append(password_zone)
-        arcade.draw_lbwh_rectangle_filled(password_zone.left, password_zone.bottom, password_zone.width, password_zone.height, (26, 33, 42))
-        arcade.draw_lbwh_rectangle_outline(password_zone.left, password_zone.bottom, password_zone.width, password_zone.height, BORDER, 1)
-        arcade.draw_text(TUTORIAL_FAKE_PASSWORD, password_zone.left + 18, password_zone.center_y - 8, MUTED, 16, bold=True)
         arcade.draw_text(
-            "Preset for practice. Nothing is saved.",
+            "No password is needed. This tutorial only stores your name in memory for this run.",
             form_left,
-            form_top - 184,
-            MUTED_DARK,
-            11,
+            form_top - 78,
+            MUTED,
+            12,
+            width=350,
+            multiline=True,
         )
 
-        start_zone = ClickZone("onboard_start", form_left, panel_bottom + 104, 352, 58)
+        start_zone = ClickZone("onboard_start", form_left, panel_bottom + 156, 352, 58)
         self.click_zones.append(start_zone)
         can_start = bool(self.onboarding_name.strip())
         start_color = GREEN_DARK if can_start else PANEL_SOFT
@@ -557,7 +564,100 @@ class BitcoinPredictionGame(arcade.Window):
             anchor_x="center",
             anchor_y="center",
         )
-        arcade.draw_text(self.onboarding_message, form_left, panel_bottom + 70, MUTED, 12, width=350, multiline=True)
+        arcade.draw_text(self.onboarding_message, form_left, panel_bottom + 122, MUTED, 12, width=350, multiline=True)
+
+    def _draw_tutorial_page(self) -> None:
+        arcade.draw_lbwh_rectangle_filled(0, 0, WINDOW_WIDTH, WINDOW_HEIGHT, BACKGROUND)
+        arcade.draw_lbwh_rectangle_filled(0, WINDOW_HEIGHT - 74, WINDOW_WIDTH, 74, HEADER)
+        arcade.draw_line(0, WINDOW_HEIGHT - 74, WINDOW_WIDTH, WINDOW_HEIGHT - 74, BORDER, 1)
+        arcade.draw_text("Polymarket Practice", 70, WINDOW_HEIGHT - 45, TEXT, 24, bold=True, anchor_y="center")
+        arcade.draw_text(
+            f"Welcome, {self._player_call_name()}",
+            WINDOW_WIDTH - 70,
+            WINDOW_HEIGHT - 45,
+            MUTED,
+            13,
+            anchor_x="right",
+            anchor_y="center",
+        )
+
+        panel_left = 70
+        panel_bottom = 70
+        panel_width = WINDOW_WIDTH - 140
+        panel_height = WINDOW_HEIGHT - 190
+        arcade.draw_lbwh_rectangle_filled(panel_left, panel_bottom, panel_width, panel_height, PANEL)
+        arcade.draw_lbwh_rectangle_outline(panel_left, panel_bottom, panel_width, panel_height, BORDER, 1)
+        arcade.draw_lbwh_rectangle_filled(panel_left, panel_bottom + panel_height - 8, panel_width, 8, BLUE)
+
+        arcade.draw_text("Tutorial: read, choose, buy", panel_left + 42, panel_bottom + panel_height - 70, TEXT, 31, bold=True)
+        arcade.draw_text(
+            "Simple articles are practice clues. The arrows show which buttons make the game run.",
+            panel_left + 44,
+            panel_bottom + panel_height - 106,
+            MUTED,
+            15,
+        )
+
+        article_left = panel_left + 42
+        article_top = panel_bottom + panel_height - 152
+        for index, article in enumerate(SIMPLE_TUTORIAL_ARTICLES):
+            top = article_top - index * 126
+            arcade.draw_lbwh_rectangle_filled(article_left, top - 96, 560, 104, PANEL_ALT)
+            arcade.draw_lbwh_rectangle_outline(article_left, top - 96, 560, 104, BORDER, 1)
+            arcade.draw_lbwh_rectangle_filled(article_left, top - 96, 6, 104, BLUE if index != 1 else RED)
+            arcade.draw_text(article.source, article_left + 20, top - 18, MUTED, 10, bold=True)
+            arcade.draw_text(article.headline, article_left + 20, top - 45, TEXT, 17, bold=True, width=510, multiline=True)
+            arcade.draw_text(article.summary, article_left + 20, top - 76, MUTED, 12, width=510, multiline=True)
+
+        guide_left = panel_left + 680
+        guide_bottom = panel_bottom + 132
+        arcade.draw_lbwh_rectangle_filled(guide_left, guide_bottom, 540, 410, (18, 23, 30))
+        arcade.draw_lbwh_rectangle_outline(guide_left, guide_bottom, 540, 410, BORDER, 1)
+        arcade.draw_text("Game buttons to click", guide_left + 32, guide_bottom + 360, TEXT, 22, bold=True)
+
+        up_button = ClickZone("tutorial_up_preview", guide_left + 274, guide_bottom + 286, 102, 46)
+        down_button = ClickZone("tutorial_down_preview", guide_left + 388, guide_bottom + 286, 112, 46)
+        amount_button = ClickZone("tutorial_amount_preview", guide_left + 326, guide_bottom + 190, 118, 50)
+        buy_button = ClickZone("tutorial_buy_preview", guide_left + 274, guide_bottom + 76, 226, 56)
+        for zone, label, color in (
+            (up_button, "Up", GREEN),
+            (down_button, "Down", RED_DARK),
+            (amount_button, "$25", PANEL_SOFT),
+            (buy_button, "Buy & Start", GREEN_DARK),
+        ):
+            arcade.draw_lbwh_rectangle_filled(zone.left, zone.bottom, zone.width, zone.height, color)
+            arcade.draw_lbwh_rectangle_outline(zone.left, zone.bottom, zone.width, zone.height, BORDER, 1)
+            arcade.draw_text(label, zone.center_x, zone.center_y + 1, TEXT, 15, bold=True, anchor_x="center", anchor_y="center")
+
+        targets = [
+            (TUTORIAL_CLICK_TARGETS[0], up_button.center_x, up_button.center_y),
+            (TUTORIAL_CLICK_TARGETS[1], amount_button.center_x, amount_button.center_y),
+            (TUTORIAL_CLICK_TARGETS[2], buy_button.center_x, buy_button.center_y),
+        ]
+        for index, (target, button_x, button_y) in enumerate(targets):
+            text_x = guide_left + 32
+            text_y = guide_bottom + 302 - index * 100
+            arcade.draw_text(target.button_label, text_x, text_y + 30, BLUE, 12, bold=True)
+            arcade.draw_text(target.title, text_x, text_y + 7, TEXT, 16, bold=True)
+            arcade.draw_text(target.detail, text_x, text_y - 18, MUTED, 12, width=200, multiline=True)
+            self._draw_arrow(text_x + 210, text_y + 8, button_x - 12, button_y, BLUE)
+
+        continue_zone = ClickZone("tutorial_continue", panel_left + panel_width - 332, panel_bottom + 28, 290, 54)
+        self.click_zones.append(continue_zone)
+        button_color = GREEN if self.hovered_key == "tutorial_continue" else GREEN_DARK
+        arcade.draw_lbwh_rectangle_filled(continue_zone.left, continue_zone.bottom, continue_zone.width, continue_zone.height, button_color)
+        arcade.draw_lbwh_rectangle_outline(continue_zone.left, continue_zone.bottom, continue_zone.width, continue_zone.height, BORDER, 1)
+        arcade.draw_text("Open Practice Market", continue_zone.center_x, continue_zone.center_y + 1, TEXT, 17, bold=True, anchor_x="center", anchor_y="center")
+
+    def _draw_arrow(self, start_x: float, start_y: float, end_x: float, end_y: float, color: tuple[int, int, int]) -> None:
+        arcade.draw_line(start_x, start_y, end_x, end_y, color, 3)
+        angle = math.atan2(end_y - start_y, end_x - start_x)
+        size = 11
+        left_angle = angle + math.pi * 0.78
+        right_angle = angle - math.pi * 0.78
+        left = (end_x + math.cos(left_angle) * size, end_y + math.sin(left_angle) * size)
+        right = (end_x + math.cos(right_angle) * size, end_y + math.sin(right_angle) * size)
+        arcade.draw_triangle_filled(end_x, end_y, left[0], left[1], right[0], right[1], color)
 
     def _draw_header(self) -> None:
         arcade.draw_lbwh_rectangle_filled(0, WINDOW_HEIGHT - 74, WINDOW_WIDTH, 74, HEADER)
