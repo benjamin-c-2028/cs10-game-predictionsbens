@@ -66,7 +66,7 @@ def build_market(news_cards: list[NewsCard]) -> MarketState:
         + average_reliability * ROUND_VOLATILITY_RELIABILITY
     )
     swing_phase = random.uniform(0.0, math.tau)
-    swing_cycles = random.uniform(1.8, 3.1)
+    swing_cycles = random.uniform(2.1, 3.8)
     return MarketState(
         target_price=starting_price,
         current_price=starting_price,
@@ -83,7 +83,7 @@ def build_market(news_cards: list[NewsCard]) -> MarketState:
 
 
 def advance_market_price(market: MarketState, price_velocity: float, delta_time: float) -> tuple[float, float]:
-    progress = market.elapsed_seconds / MARKET_DURATION_SECONDS
+    progress = max(0.0, min(1.0, market.elapsed_seconds / MARKET_DURATION_SECONDS))
     previous = market.current_price
     distance_to_resolve = market.resolve_price - previous
     anchor_price = market.target_price + (market.resolve_price - market.target_price) * 0.35
@@ -93,19 +93,22 @@ def advance_market_price(market: MarketState, price_velocity: float, delta_time:
     )
     closing_pull = distance_to_resolve * (RESOLVE_PULL + progress * ENDGAME_PULL)
     gravity_force = (anchor_price - previous) * PRICE_GRAVITY
-    wave_force = math.sin(progress * math.tau * market.swing_cycles + market.swing_phase)
-    wave_force *= PRICE_WAVE_FORCE * market.volatility
+    primary_wave = math.sin(progress * math.tau * market.swing_cycles + market.swing_phase)
+    primary_wave *= PRICE_WAVE_FORCE * market.volatility
     cross_wave = math.sin(
         progress * math.tau * (market.swing_cycles * 2.15) - market.swing_phase * 0.55
     )
     cross_wave *= SECONDARY_WAVE_FORCE * market.volatility
-    random_force = random.uniform(-1.0, 1.0) * PRICE_NOISE * market.volatility
-    random_force *= math.sqrt(max(delta_time, 0.001))
+    smooth_noise = math.sin(progress * math.tau * (market.swing_cycles * 3.6) + market.swing_phase * 1.4)
+    smooth_noise += math.sin(progress * math.tau * (market.swing_cycles * 5.2) - market.swing_phase * 0.95) * 0.55
+    smooth_noise *= PRICE_NOISE * market.volatility
+    jitter_force = random.uniform(-1.0, 1.0) * PRICE_NOISE * 0.22 * market.volatility
+    jitter_force *= math.sqrt(max(delta_time, 0.001))
     damping = price_velocity * VELOCITY_DAMPING
 
     price_velocity += (
-        article_force + closing_pull + gravity_force + wave_force + cross_wave - damping
-    ) * delta_time + random_force
+        article_force + closing_pull + gravity_force + primary_wave + cross_wave + smooth_noise - damping
+    ) * delta_time + jitter_force
     price_velocity = max(-MAX_PRICE_VELOCITY, min(MAX_PRICE_VELOCITY, price_velocity))
 
     new_price = previous + price_velocity * delta_time
