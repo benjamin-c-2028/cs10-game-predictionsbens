@@ -24,7 +24,6 @@ from .constants import (
     PANEL,
     PANEL_ALT,
     PANEL_SOFT,
-    PRICE_HISTORY_LIMIT,
     PRICE_TICK_SECONDS,
     RED,
     RED_DARK,
@@ -237,8 +236,6 @@ class BitcoinPredictionGame(arcade.Window):
             while self.tick_accumulator >= PRICE_TICK_SECONDS and not self.market.settled:
                 self.tick_accumulator -= PRICE_TICK_SECONDS
                 self.market.history.append(self.market.current_price)
-                if len(self.market.history) > PRICE_HISTORY_LIMIT:
-                    self.market.history.pop(0)
 
             if self.market.elapsed_seconds >= MARKET_DURATION_SECONDS and not self.market.settled:
                 self._settle_market()
@@ -249,8 +246,6 @@ class BitcoinPredictionGame(arcade.Window):
         self.market.active = False
         self.market.current_price = self.market.resolve_price
         self.market.history.append(self.market.current_price)
-        if len(self.market.history) > PRICE_HISTORY_LIMIT:
-            self.market.history.pop(0)
         self.market.settled = True
 
         winning_side = "Up" if self.market.current_price >= self.market.target_price else "Down"
@@ -998,8 +993,8 @@ class BitcoinPredictionGame(arcade.Window):
             arcade.draw_line(left, y, left + width - 24, y, grid_color, 1)
 
         prices = self.market.history
-        chart_min = min(prices + [self.market.target_price - 75])
-        chart_max = max(prices + [self.market.target_price + 125])
+        chart_min = min(min(prices), self.market.target_price - 75)
+        chart_max = max(max(prices), self.market.target_price + 125)
         padding = max(10, (chart_max - chart_min) * 0.08)
         low = chart_min - padding
         high = chart_max + padding

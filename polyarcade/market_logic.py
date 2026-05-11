@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+from collections import deque
 import math
 import random
 
 from .constants import (
     ARTICLE_FORCE,
+    PRICE_HISTORY_LIMIT,
     ENDGAME_PULL,
     MARKET_DURATION_SECONDS,
     MAX_PRICE_VELOCITY,
@@ -41,8 +43,8 @@ def combined_news_bias(news_cards: list[NewsCard]) -> float:
     return sum(card.price_bias for card in news_cards) / len(news_cards)
 
 
-def make_opening_history(ending_price: float) -> list[float]:
-    return [ending_price for _ in range(80)]
+def make_opening_history(ending_price: float) -> deque[float]:
+    return deque((ending_price for _ in range(80)), maxlen=PRICE_HISTORY_LIMIT)
 
 
 def build_market(news_cards: list[NewsCard]) -> MarketState:

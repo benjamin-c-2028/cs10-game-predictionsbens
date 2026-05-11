@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections import deque
 from dataclasses import dataclass
 import math
 
@@ -19,7 +20,7 @@ class NewsCard:
 class MarketState:
     target_price: float
     current_price: float
-    history: list[float]
+    history: deque[float]
     elapsed_seconds: float
     active: bool
     settled: bool
