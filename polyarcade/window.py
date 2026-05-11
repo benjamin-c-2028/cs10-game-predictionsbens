@@ -42,6 +42,9 @@ from .models import ClickZone, MarketState, NewsCard, Position, TradeRecord
 
 CLICK_SNAP_DISTANCE = 12.0
 CURSOR_TEXT_KEYS = frozenset({"onboard_name", "amount_input"})
+TEXTBOX_PULSE_SPEED = 11.0
+TEXT_CARET_BLINK_SECONDS = 0.9
+TEXT_CARET_VISIBLE_RATIO = 0.64
 
 
 class BitcoinPredictionGame(arcade.Window):
@@ -535,6 +538,35 @@ class BitcoinPredictionGame(arcade.Window):
             return "Trader"
         return self.player_full_name.split()[0]
 
+    def _pulse_fraction(self, speed: float = TEXTBOX_PULSE_SPEED) -> float:
+        return 0.5 + 0.5 * math.sin(self.cursor_anim_time * speed)
+
+    def _boost_rgb(self, color: tuple[int, int, int], amount: int) -> tuple[int, int, int]:
+        return tuple(min(255, channel + amount) for channel in color)
+
+    def _is_caret_visible(self) -> bool:
+        cycle_pos = self.cursor_anim_time % TEXT_CARET_BLINK_SECONDS
+        return cycle_pos < TEXT_CARET_BLINK_SECONDS * TEXT_CARET_VISIBLE_RATIO
+
+    def _draw_textbox_caret(
+        self,
+        zone: ClickZone,
+        text_left: float,
+        typed_text: str,
+        font_size: int = 16,
+    ) -> None:
+        if not self._is_caret_visible():
+            return
+
+        approx_char_width = max(7.0, font_size * 0.56)
+        max_text_width = max(0.0, zone.width - (text_left - zone.left) - 18)
+        text_width = min(len(typed_text) * approx_char_width, max_text_width)
+        caret_x = min(text_left + text_width + 2.0, zone.right - 14.0)
+        caret_bottom = zone.bottom + 11.0
+        caret_top = zone.top - 11.0
+        arcade.draw_line(caret_x, caret_bottom, caret_x, caret_top, ORANGE, 3)
+        arcade.draw_line(caret_x + 2.0, caret_bottom, caret_x + 2.0, caret_top, (*ORANGE, 140), 1)
+
     def _draw_onboarding(self) -> None:
         arcade.draw_lbwh_rectangle_filled(0, 0, WINDOW_WIDTH, WINDOW_HEIGHT, BACKGROUND)
         arcade.draw_lbwh_rectangle_filled(0, WINDOW_HEIGHT - 74, WINDOW_WIDTH, 74, HEADER)
@@ -588,18 +620,56 @@ class BitcoinPredictionGame(arcade.Window):
 
         name_zone = ClickZone("onboard_name", form_left, form_top - 32, 352, 58)
         self.click_zones.append(name_zone)
-        name_border = BLUE if self.onboarding_name_active else BORDER
-        arcade.draw_lbwh_rectangle_filled(name_zone.left, name_zone.bottom, name_zone.width, name_zone.height, PANEL_SOFT)
-        arcade.draw_lbwh_rectangle_outline(name_zone.left, name_zone.bottom, name_zone.width, name_zone.height, name_border, 2)
+        name_is_active = self.onboarding_name_active
+        name_pulse = self._pulse_fraction()
+        if name_is_active:
+            glow_alpha = int(28 + 40 * name_pulse)
+            arcade.draw_lbwh_rectangle_filled(
+                name_zone.left - 4,
+                name_zone.bottom - 4,
+                name_zone.width + 8,
+                name_zone.height + 8,
+                (*BLUE, glow_alpha),
+            )
+
+        name_fill = PANEL_SOFT
+        if name_is_active:
+            name_fill = self._boost_rgb(PANEL_SOFT, int(6 + 11 * name_pulse))
+        elif self.hovered_key == "onboard_name":
+            name_fill = (41, 52, 65)
+
+        name_border = self._boost_rgb(BLUE, int(16 + 22 * name_pulse)) if name_is_active else BORDER
+        arcade.draw_lbwh_rectangle_filled(name_zone.left, name_zone.bottom, name_zone.width, name_zone.height, name_fill)
+        arcade.draw_lbwh_rectangle_outline(
+            name_zone.left,
+            name_zone.bottom,
+            name_zone.width,
+            name_zone.height,
+            name_border,
+            2 if name_is_active else 1,
+        )
+
+        text_left = name_zone.left + 18
+        text_y = name_zone.center_y - 8
         if self.onboarding_name:
             name_display = self.onboarding_name
             name_color = TEXT
         else:
-            name_display = "Example: Benjamin Silverman"
+            name_display = "Example: John Doe"
             name_color = MUTED_DARK
-        if self.onboarding_name_active and self.onboarding_name:
-            name_display = f"{name_display}|"
-        arcade.draw_text(name_display, name_zone.left + 18, name_zone.center_y - 8, name_color, 16, bold=True)
+        arcade.draw_text(name_display, text_left, text_y, name_color, 16, bold=True)
+        if name_is_active:
+            self._draw_textbox_caret(name_zone, text_left, self.onboarding_name, font_size=16)
+            typing_hint_color = ORANGE if self._is_caret_visible() else MUTED
+            arcade.draw_text(
+                "typing...",
+                name_zone.right - 12,
+                name_zone.bottom + 7,
+                typing_hint_color,
+                10,
+                bold=True,
+                anchor_x="right",
+            )
 
         arcade.draw_text(
             "No password is needed. This tutorial only stores your name in memory for this run.",
@@ -1031,21 +1101,34 @@ class BitcoinPredictionGame(arcade.Window):
         show_attention = self._should_flash_amount_field() and not disabled
         pulse = 0.5 + 0.5 * math.sin(self.ui_animation_seconds * 8.8)
 
+        amount_pulse = self._pulse_fraction(speed=9.0)
+        if active:
+            glow_alpha = int(24 + 32 * amount_pulse)
+            arcade.draw_lbwh_rectangle_filled(
+                zone.left - 3,
+                zone.bottom - 3,
+                zone.width + 6,
+                zone.height + 6,
+                (*BLUE, glow_alpha),
+            )
+
         color = PANEL_SOFT if active else PANEL_ALT
         if self.hovered_key == "amount_input" and not disabled:
             color = (41, 52, 65)
-        if show_attention and not active:
+        if active:
+            color = self._boost_rgb(PANEL_SOFT, int(5 + 9 * amount_pulse))
+        elif show_attention:
             color = self._blend_color(color, PANEL_SOFT, 0.24 + pulse * 0.24)
 
-        border_color = BLUE if active else BORDER
-        border_width = 1
-        if show_attention:
+        border_color = self._boost_rgb(BLUE, int(14 + 20 * amount_pulse)) if active else BORDER
+        border_width = 2 if active else 1
+        if show_attention and not active:
             border_color = self._blend_color(BLUE, YELLOW, 0.32 + pulse * 0.55)
             border_width = 2 if pulse > 0.28 else 1
 
         arcade.draw_lbwh_rectangle_filled(zone.left, zone.bottom, zone.width, zone.height, color)
         arcade.draw_lbwh_rectangle_outline(zone.left, zone.bottom, zone.width, zone.height, border_color, border_width)
-        if show_attention:
+        if show_attention and not active:
             outer_color = self._blend_color(BLUE, YELLOW, 0.45 + pulse * 0.35)
             arcade.draw_lbwh_rectangle_outline(
                 zone.left - 3,
@@ -1066,7 +1149,20 @@ class BitcoinPredictionGame(arcade.Window):
             amount_text = "Type dollars"
             amount_color = MUTED
 
-        arcade.draw_text(amount_text, zone.left + 18, zone.center_y + 9, amount_color, 20, bold=True, anchor_y="center")
+        text_left = zone.left + 18
+        arcade.draw_text(amount_text, text_left, zone.center_y + 9, amount_color, 20, bold=True, anchor_y="center")
+        if active:
+            self._draw_textbox_caret(zone, text_left, self.amount_input_text, font_size=20)
+            typing_hint_color = ORANGE if self._is_caret_visible() else MUTED
+            arcade.draw_text(
+                "typing...",
+                zone.right - 12,
+                zone.bottom + 9,
+                typing_hint_color,
+                10,
+                bold=True,
+                anchor_x="right",
+            )
         arcade.draw_text("custom stake", zone.left + 18, zone.center_y - 17, MUTED, 10, anchor_y="center")
 
     def _should_flash_amount_field(self) -> bool:
