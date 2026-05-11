@@ -626,7 +626,7 @@ class BitcoinPredictionGame(arcade.Window):
     def on_mouse_motion(self, x: float, y: float, dx: float, dy: float) -> None:
         del dx, dy
         self.hovered_key = None
-        for zone in self.click_zones:
+        for zone in reversed(self.click_zones):
             if zone.contains(x, y):
                 self.hovered_key = zone.key
                 break
@@ -637,13 +637,17 @@ class BitcoinPredictionGame(arcade.Window):
             return
 
         clicked_key = None
-        for zone in self.click_zones:
+        for zone in reversed(self.click_zones):
             if zone.contains(x, y):
                 clicked_key = zone.key
                 break
 
         if clicked_key is None:
+            self.amount_input_active = False
             return
+
+        if clicked_key != "amount_input":
+            self.amount_input_active = False
 
         if self.onboarding_active:
             self._handle_onboarding_click(clicked_key)
@@ -657,6 +661,14 @@ class BitcoinPredictionGame(arcade.Window):
 
         if clicked_key == "dashboard_toggle":
             self.dashboard_active = not self.dashboard_active
+            return
+
+        if clicked_key == "amount_input" and not self.market.settled and self.position is None:
+            self.amount_input_active = True
+            if self.demo_round_active:
+                self._update_demo_status()
+            else:
+                self.status_message = "Type the dollar amount, then buy."
             return
 
         if clicked_key.startswith("article_") and self.demo_round_active and not self.market.active and self.position is None:
@@ -677,25 +689,12 @@ class BitcoinPredictionGame(arcade.Window):
             return
 
         if clicked_key in ("side_up", "side_down") and not self.market.settled:
-            if self.demo_round_active and not self._demo_articles_done():
-                self._update_demo_status()
-                return
             self.selected_side = "Up" if clicked_key == "side_up" else "Down"
             if self.demo_round_active:
                 self.demo_side_picked = True
                 self._update_demo_status()
             else:
                 self.status_message = f"{self.selected_side} selected, {self._player_call_name()}. Choose amount, then buy."
-        elif clicked_key.startswith("amount_") and not self.market.settled:
-            if self.demo_round_active and not self.demo_side_picked:
-                self._update_demo_status()
-                return
-            self.selected_amount = int(clicked_key.split("_", 1)[1])
-            if self.demo_round_active:
-                self.demo_amount_picked = True
-                self._update_demo_status()
-            else:
-                self.status_message = f"Order amount set to ${self.selected_amount}."
         elif clicked_key == "buy":
             if self.demo_round_active:
                 if not self._demo_articles_done() or not self.demo_side_picked or not self.demo_amount_picked:
@@ -704,27 +703,44 @@ class BitcoinPredictionGame(arcade.Window):
             self._buy_position()
 
     def on_text(self, text: str) -> None:
-        if not self.onboarding_active or not self.onboarding_name_active:
+        if self.onboarding_active and self.onboarding_name_active:
+            allowed = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ -'."
+            for character in text:
+                if character in allowed and len(self.onboarding_name) < MAX_FULL_NAME_CHARS:
+                    self.onboarding_name += character
+            self.onboarding_message = "Click Start Practice Tutorial when your name is ready."
             return
 
-        allowed = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ -'."
-        for character in text:
-            if character in allowed and len(self.onboarding_name) < MAX_FULL_NAME_CHARS:
-                self.onboarding_name += character
-        self.onboarding_message = "Click Start Practice Tutorial when your name is ready."
+        if self.amount_input_active and not self.market.settled and self.position is None:
+            for character in text:
+                if character.isdigit() and len(self.amount_input_text) < MAX_AMOUNT_INPUT_CHARS:
+                    self.amount_input_text += character
+            self._sync_selected_amount_from_text()
+            if self.demo_round_active:
+                self._update_demo_status()
+            elif self.selected_amount > 0:
+                self.status_message = f"Order amount set to ${self.selected_amount}."
 
     def on_key_press(self, symbol: int, modifiers: int) -> None:
         del modifiers
-        if not self.onboarding_active:
+        if self.onboarding_active:
+            if symbol == arcade.key.BACKSPACE:
+                self.onboarding_name = self.onboarding_name[:-1]
+                self.onboarding_message = "Type your full name to create a practice identity."
+            elif symbol in (arcade.key.ENTER, arcade.key.RETURN):
+                self.onboarding_message = "Use the Start Practice Tutorial button to continue."
+            elif symbol == arcade.key.TAB:
+                self.onboarding_name_active = True
             return
 
-        if symbol == arcade.key.BACKSPACE:
-            self.onboarding_name = self.onboarding_name[:-1]
-            self.onboarding_message = "Type your full name to create a practice identity."
-        elif symbol in (arcade.key.ENTER, arcade.key.RETURN):
-            self.onboarding_message = "Use the Start Practice Tutorial button to continue."
-        elif symbol == arcade.key.TAB:
-            self.onboarding_name_active = True
+        if self.amount_input_active and not self.market.settled and self.position is None:
+            if symbol == arcade.key.BACKSPACE:
+                self.amount_input_text = self.amount_input_text[:-1]
+                self._sync_selected_amount_from_text()
+                if self.demo_round_active:
+                    self._update_demo_status()
+            elif symbol in (arcade.key.ENTER, arcade.key.RETURN):
+                self.amount_input_active = False
 
     def _handle_onboarding_click(self, clicked_key: str) -> None:
         if clicked_key == "onboard_name":
