@@ -40,6 +40,9 @@ from .content import ALL_NEWS, DEMO_NEWS_CARDS, SIMPLE_TUTORIAL_ARTICLES, TUTORI
 from .market_logic import advance_market_price, build_market, choose_news_cards, contract_price
 from .models import ClickZone, MarketState, NewsCard, Position, TradeRecord
 
+CLICK_SNAP_DISTANCE = 12.0
+CURSOR_TEXT_KEYS = frozenset({"onboard_name", "amount_input"})
+
 
 class BitcoinPredictionGame(arcade.Window):
     """Polymarket-inspired arcade game with article-driven BTC movement."""
@@ -84,8 +87,13 @@ class BitcoinPredictionGame(arcade.Window):
         self.market_transition = 1.0
         self.hovered_key: str | None = None
         self.click_zones: list[ClickZone] = []
+        self.cursor_x = WINDOW_WIDTH / 2
+        self.cursor_y = WINDOW_HEIGHT / 2
+        self.cursor_click_flash = 0.0
+        self.cursor_anim_time = 0.0
         self.news_cards = choose_news_cards(ALL_NEWS)
         self.market = self._new_market()
+        self.set_mouse_visible(False)
 
     def _new_market(self, demo_mode: bool = False) -> MarketState:
         self.tick_accumulator = 0.0
@@ -162,12 +170,18 @@ class BitcoinPredictionGame(arcade.Window):
         self.click_zones = []
         if self.onboarding_active:
             self._draw_onboarding()
+            self._update_hovered_key(self.cursor_x, self.cursor_y)
+            self._draw_game_cursor()
             return
         if self.tutorial_active:
             self._draw_tutorial_page()
+            self._update_hovered_key(self.cursor_x, self.cursor_y)
+            self._draw_game_cursor()
             return
         if self.dashboard_active:
             self._draw_dashboard()
+            self._update_hovered_key(self.cursor_x, self.cursor_y)
+            self._draw_game_cursor()
             return
 
         self._draw_header()
@@ -175,19 +189,23 @@ class BitcoinPredictionGame(arcade.Window):
         self._draw_ticket()
         self._draw_news_cards()
         self._draw_transition_overlay()
+        self._update_hovered_key(self.cursor_x, self.cursor_y)
+        self._draw_game_cursor()
 
     def on_update(self, delta_time: float) -> None:
         delta_time = max(0.0, delta_time)
         self.ui_animation_seconds += delta_time
+        animation_delta = min(delta_time, MAX_FRAME_SECONDS)
+        self.cursor_anim_time += animation_delta
+        self.cursor_click_flash = max(0.0, self.cursor_click_flash - animation_delta * 6.0)
 
         if self.onboarding_active or self.tutorial_active:
             return
 
         if not self.dashboard_active:
-            transition_delta = min(delta_time, MAX_FRAME_SECONDS)
             self.market_transition = min(
                 1.0,
-                self.market_transition + transition_delta * MARKET_TRANSITION_SPEED,
+                self.market_transition + animation_delta * MARKET_TRANSITION_SPEED,
             )
 
         if not self.market.active or self.market.settled:
@@ -342,24 +360,60 @@ class BitcoinPredictionGame(arcade.Window):
     def _contract_price(self, side: str) -> int:
         return contract_price(self.market, side)
 
+    def _topmost_zone_at(self, x: float, y: float, padding: float = 0.0) -> ClickZone | None:
+        for zone in reversed(self.click_zones):
+            if zone.contains(x, y, padding=padding):
+                return zone
+        return None
+
+    def _resolve_click_key(self, x: float, y: float) -> str | None:
+        direct_zone = self._topmost_zone_at(x, y)
+        if direct_zone is not None:
+            return direct_zone.key
+
+        snapped_zone: ClickZone | None = None
+        best_distance = CLICK_SNAP_DISTANCE
+        for zone in reversed(self.click_zones):
+            distance = zone.edge_distance(x, y)
+            if distance <= best_distance:
+                best_distance = distance
+                snapped_zone = zone
+        return snapped_zone.key if snapped_zone is not None else None
+
+    def _update_hovered_key(self, x: float, y: float) -> None:
+        hovered_zone = self._topmost_zone_at(x, y)
+        self.hovered_key = hovered_zone.key if hovered_zone is not None else None
+
     def on_mouse_motion(self, x: float, y: float, dx: float, dy: float) -> None:
         del dx, dy
-        self.hovered_key = None
-        for zone in reversed(self.click_zones):
-            if zone.contains(x, y):
-                self.hovered_key = zone.key
-                break
+        self.cursor_x = x
+        self.cursor_y = y
+        self._update_hovered_key(x, y)
+
+    def on_mouse_drag(
+        self,
+        x: float,
+        y: float,
+        dx: float,
+        dy: float,
+        buttons: int,
+        modifiers: int,
+    ) -> None:
+        del dx, dy, buttons, modifiers
+        self.cursor_x = x
+        self.cursor_y = y
+        self._update_hovered_key(x, y)
 
     def on_mouse_press(self, x: float, y: float, button: int, modifiers: int) -> None:
         del modifiers
+        self.cursor_x = x
+        self.cursor_y = y
         if button != arcade.MOUSE_BUTTON_LEFT:
             return
 
-        clicked_key = None
-        for zone in reversed(self.click_zones):
-            if zone.contains(x, y):
-                clicked_key = zone.key
-                break
+        self.cursor_click_flash = 1.0
+        clicked_key = self._resolve_click_key(x, y)
+        self._update_hovered_key(x, y)
 
         if clicked_key is None:
             self.amount_input_active = False
@@ -669,6 +723,48 @@ class BitcoinPredictionGame(arcade.Window):
         left = (end_x + math.cos(left_angle) * size, end_y + math.sin(left_angle) * size)
         right = (end_x + math.cos(right_angle) * size, end_y + math.sin(right_angle) * size)
         arcade.draw_triangle_filled(end_x, end_y, left[0], left[1], right[0], right[1], color)
+
+    def _draw_game_cursor(self) -> None:
+        is_text_target = self.hovered_key in CURSOR_TEXT_KEYS
+        is_click_target = self.hovered_key is not None
+        if is_text_target:
+            cursor_color = ORANGE
+        elif is_click_target:
+            cursor_color = BLUE
+        else:
+            cursor_color = MUTED
+
+        pulse = 1 + 0.05 * math.sin(self.cursor_anim_time * 9)
+        outer_radius = (10 if is_click_target else 8) * pulse + self.cursor_click_flash * 2.8
+        inner_radius = 3.4 + self.cursor_click_flash
+        glow_alpha = min(255, int(70 + 140 * self.cursor_click_flash))
+        outer_color = (*cursor_color, glow_alpha)
+        ring_color = (*cursor_color, 220)
+        center_color = (*TEXT, 235)
+
+        arcade.draw_circle_outline(self.cursor_x, self.cursor_y, outer_radius, outer_color, border_width=3)
+        arcade.draw_circle_outline(
+            self.cursor_x,
+            self.cursor_y,
+            max(outer_radius - 4.0, 4.0),
+            ring_color,
+            border_width=1.2,
+        )
+        arcade.draw_circle_filled(self.cursor_x, self.cursor_y, inner_radius, center_color)
+
+        if is_text_target:
+            bar_x = self.cursor_x + 13
+            bar_half = 12 + self.cursor_click_flash * 1.6
+            arcade.draw_line(bar_x, self.cursor_y - bar_half, bar_x, self.cursor_y + bar_half, ring_color, 2)
+        elif is_click_target:
+            arcade.draw_text(
+                "CLICK",
+                self.cursor_x + 16,
+                self.cursor_y + 12,
+                ring_color,
+                10,
+                bold=True,
+            )
 
     def _draw_header(self) -> None:
         arcade.draw_lbwh_rectangle_filled(0, WINDOW_HEIGHT - 74, WINDOW_WIDTH, 74, HEADER)

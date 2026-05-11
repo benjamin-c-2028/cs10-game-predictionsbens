@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import math
 
 
 @dataclass(frozen=True)
@@ -57,8 +58,24 @@ class ClickZone:
     width: float
     height: float
 
-    def contains(self, x: float, y: float) -> bool:
-        return self.left <= x <= self.left + self.width and self.bottom <= y <= self.bottom + self.height
+    def contains(self, x: float, y: float, padding: float = 0.0) -> bool:
+        return (
+            self.left - padding <= x <= self.right + padding
+            and self.bottom - padding <= y <= self.top + padding
+        )
+
+    def edge_distance(self, x: float, y: float) -> float:
+        dx = max(self.left - x, 0.0, x - self.right)
+        dy = max(self.bottom - y, 0.0, y - self.top)
+        return math.hypot(dx, dy)
+
+    @property
+    def right(self) -> float:
+        return self.left + self.width
+
+    @property
+    def top(self) -> float:
+        return self.bottom + self.height
 
     @property
     def center_x(self) -> float:
