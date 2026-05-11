@@ -1269,34 +1269,24 @@ class BitcoinPredictionGame(arcade.Window):
         inset = 16
         content_width = int(width - inset * 2)
 
-        arcade.draw_text(card.source, left + inset, bottom + height - 31, MUTED, 9, bold=True)
         arcade.draw_text(
-            f"Reliability {max(81, card.reliability)}%",
+            f"{card.reliability}%",
             left + width - inset,
             bottom + height - 31,
             MUTED,
-            9,
+            10,
             bold=True,
             anchor_x="right",
         )
         arcade.draw_text(
-            card.analysis_label,
-            left + inset,
-            bottom + height - 62,
-            BLUE,
-            10,
-            bold=True,
-            width=content_width,
-            multiline=True,
-        )
-        arcade.draw_text(
             card.headline,
             left + inset,
-            bottom + 26,
+            bottom + height / 2 - 18,
             TEXT,
-            14,
+            16,
             bold=True,
             width=content_width,
+            align="center",
             multiline=True,
         )
 
