@@ -1173,9 +1173,7 @@ class BitcoinPredictionGame(arcade.Window):
         self._draw_side_button("side_down", "Down", down_price, left + 184, bottom + height - 140, 142, 58)
 
         arcade.draw_text("Order Amount", left + 26, bottom + height - 190, MUTED, 12, bold=True)
-        for index, amount in enumerate((5, 25, 100)):
-            x = left + 26 + index * 110
-            self._draw_amount_button(amount, x, bottom + height - 282)
+        self._draw_amount_field(left + 26, bottom + height - 282, width - 52, 66)
 
         arcade.draw_line(left + 26, bottom + height - 320, left + width - 26, bottom + height - 320, BORDER, 1)
         self._draw_position_summary(left + 26, bottom + height - 338, width - 52)
@@ -1216,20 +1214,30 @@ class BitcoinPredictionGame(arcade.Window):
         text_color = MUTED if disabled and not selected else TEXT
         arcade.draw_text(f"{label} {price}c", left + width / 2, bottom + height / 2 + 2, text_color, 15, bold=True, anchor_x="center", anchor_y="center")
 
-    def _draw_amount_button(self, amount: int, left: float, bottom: float) -> None:
-        key = f"amount_{amount}"
-        zone = ClickZone(key, left, bottom, 86, 66)
+    def _draw_amount_field(self, left: float, bottom: float, width: float, height: float) -> None:
+        zone = ClickZone("amount_input", left, bottom, width, height)
         self.click_zones.append(zone)
-        selected = self.selected_amount == amount
         disabled = self.position is not None or self.market.settled
+        active = self.amount_input_active and not disabled
 
-        color = PANEL_SOFT if selected else PANEL_ALT
-        if self.hovered_key == key and not disabled:
+        color = PANEL_SOFT if active else PANEL_ALT
+        if self.hovered_key == "amount_input" and not disabled:
             color = (41, 52, 65)
         arcade.draw_lbwh_rectangle_filled(zone.left, zone.bottom, zone.width, zone.height, color)
-        arcade.draw_lbwh_rectangle_outline(zone.left, zone.bottom, zone.width, zone.height, BLUE if selected else BORDER, 1)
-        arcade.draw_text(f"${amount}", zone.center_x, zone.center_y + 9, TEXT if not disabled or selected else MUTED, 20, bold=True, anchor_x="center", anchor_y="center")
-        arcade.draw_text("stake", zone.center_x, zone.center_y - 17, MUTED, 10, anchor_x="center", anchor_y="center")
+        arcade.draw_lbwh_rectangle_outline(zone.left, zone.bottom, zone.width, zone.height, BLUE if active else BORDER, 1)
+
+        if self.amount_input_text:
+            amount_text = f"${self.amount_input_text}"
+            amount_color = TEXT if not disabled else MUTED
+        elif active:
+            amount_text = "$"
+            amount_color = MUTED
+        else:
+            amount_text = "Type dollars"
+            amount_color = MUTED
+
+        arcade.draw_text(amount_text, zone.left + 18, zone.center_y + 9, amount_color, 20, bold=True, anchor_y="center")
+        arcade.draw_text("custom stake", zone.left + 18, zone.center_y - 17, MUTED, 10, anchor_y="center")
 
     def _draw_position_summary(self, left: float, top: float, width: float) -> None:
         balance_label = "Demo Cash" if self.demo_round_active else f"{self._player_call_name()}'s Balance"
@@ -1247,7 +1255,7 @@ class BitcoinPredictionGame(arcade.Window):
             if self.selected_amount <= 0:
                 arcade.draw_text("Preview", left, top - 120, MUTED, 12, bold=True)
                 arcade.draw_text(f"{self.selected_side} selected", left, top - 146, TEXT, 15, bold=True)
-                arcade.draw_text("Now pick a stake to keep going.", left, top - 168, MUTED, 11)
+                arcade.draw_text("Now type an amount to keep going.", left, top - 168, MUTED, 11)
                 return
             price = self._contract_price(self.selected_side)
             shares = self.selected_amount / (price / 100)
