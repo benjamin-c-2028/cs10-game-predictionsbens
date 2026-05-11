@@ -115,8 +115,8 @@ def advance_market_price(market: MarketState, price_velocity: float, delta_time:
     raw_delta = drift + oscillation + forced_dip + forced_spike
 
     # Hard-cap move size to prevent giant excursions while still looking very volatile.
-    top_cap = max(resolve_delta + 4.0, 10.0)
-    bottom_cap = min(resolve_delta - 4.0, -15.0)
+    top_cap = max(resolve_delta + 0.5, 10.0)
+    bottom_cap = min(resolve_delta - 1.0, -15.0)
     bounded_delta = min(top_cap, max(bottom_cap, raw_delta))
 
     # Snap cleanly into the predetermined settle result near the end of the round.
