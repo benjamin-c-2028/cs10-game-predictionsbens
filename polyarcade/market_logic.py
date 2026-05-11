@@ -21,14 +21,35 @@ from .constants import (
 from .models import MarketState, NewsCard
 
 
+def _rebalance_display_reliability(cards: list[NewsCard]) -> list[NewsCard]:
+    """Ensure exactly one shown article reliability is above 80%."""
+    if not cards:
+        return []
+
+    high_index = max(range(len(cards)), key=lambda index: cards[index].reliability)
+    normalized_cards: list[NewsCard] = []
+    for index, card in enumerate(cards):
+        reliability = max(81, card.reliability) if index == high_index else min(80, card.reliability)
+        normalized_cards.append(
+            NewsCard(
+                card.headline,
+                card.source,
+                card.analysis_label,
+                reliability,
+                card.price_bias,
+            )
+        )
+    return normalized_cards
+
+
 def choose_news_cards(news_pool: list[NewsCard]) -> list[NewsCard]:
     cards = random.sample(news_pool, 3)
     for _ in range(12):
         average_bias = sum(card.price_bias for card in cards) / len(cards)
         if abs(average_bias) >= 0.14:
-            return cards
+            return _rebalance_display_reliability(cards)
         cards = random.sample(news_pool, 3)
-    return cards
+    return _rebalance_display_reliability(cards)
 
 
 def combined_news_bias(news_cards: list[NewsCard]) -> float:

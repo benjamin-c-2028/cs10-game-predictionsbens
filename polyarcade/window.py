@@ -113,7 +113,7 @@ class BitcoinPredictionGame(arcade.Window):
             self.selected_amount = 0
             self.amount_input_text = ""
             self.amount_input_active = False
-            self.news_cards = list(DEMO_NEWS_CARDS)
+            self.news_cards = choose_news_cards(DEMO_NEWS_CARDS)
             self.demo_round_complete = False
             self.demo_side_picked = False
             self.demo_amount_picked = False
@@ -1270,6 +1270,7 @@ class BitcoinPredictionGame(arcade.Window):
         inset = 16
         content_width = int(width - inset * 2)
 
+        arcade.draw_text(card.source, left + inset, bottom + height - 31, MUTED, 9, bold=True)
         arcade.draw_text(
             f"{card.reliability}%",
             left + width - inset,
@@ -1282,7 +1283,7 @@ class BitcoinPredictionGame(arcade.Window):
         arcade.draw_text(
             card.headline,
             left + inset,
-            bottom + height / 2 - 18,
+            bottom + height / 2 - 4,
             TEXT,
             16,
             bold=True,
