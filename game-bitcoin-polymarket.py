@@ -920,7 +920,7 @@ class BitcoinPredictionGame(arcade.Window):
         for zone, label, color in (
             (up_button, "Up", GREEN),
             (down_button, "Down", RED_DARK),
-            (amount_button, "$25", PANEL_SOFT),
+            (amount_button, "$ Amount", PANEL_SOFT),
             (buy_button, "Buy & Start", GREEN_DARK),
         ):
             arcade.draw_lbwh_rectangle_filled(zone.left, zone.bottom, zone.width, zone.height, color)
