@@ -126,30 +126,30 @@ class ClickZone:
 
 UPWARD_BIAS_NEWS = [
     NewsCard(
-        "Bitcoin ETF desks report steady inflows",
+        "Big funds keep buying Bitcoin",
         "Crypto Wire",
-        "High-Impact Analysis",
+        "Big clue",
         50,
         0.82,
     ),
     NewsCard(
-        "Miners slow BTC transfers to exchanges",
+        "Miners send less Bitcoin to exchanges",
         "Block Ledger",
-        "Indirect Connections: Bitcoin's Echoes",
+        "Flow clue",
         38,
         0.64,
     ),
     NewsCard(
-        "Risk assets bounce after softer rate comments",
+        "Stocks and crypto rise on soft rate talk",
         "Macro Desk",
-        "Bitcoin and Beyond: The Subtler Link",
+        "Market clue",
         44,
         0.58,
     ),
     NewsCard(
-        "Stablecoin liquidity rises across major exchanges",
+        "More stablecoin cash hits exchanges",
         "Market Pulse",
-        "Indirect Connections: Bitcoin's Echoes",
+        "Cash clue",
         35,
         0.52,
     ),
@@ -157,30 +157,30 @@ UPWARD_BIAS_NEWS = [
 
 DOWNWARD_BIAS_NEWS = [
     NewsCard(
-        "Exchange wallets receive a burst of BTC deposits",
+        "A lot of Bitcoin moves to exchanges",
         "Chain Watch",
-        "High-Impact Analysis",
+        "Big clue",
         52,
         -0.82,
     ),
     NewsCard(
-        "Dollar strength pressures crypto markets",
+        "A strong dollar hurts crypto",
         "Macro Desk",
-        "Bitcoin and Beyond: The Subtler Link",
+        "Market clue",
         42,
         -0.62,
     ),
     NewsCard(
-        "Leveraged longs face liquidation risk",
+        "Too many traders are crowded on the long side",
         "Derivatives Daily",
-        "High-Impact Analysis",
+        "Risk clue",
         48,
         -0.72,
     ),
     NewsCard(
-        "Regulatory headline cools crypto momentum",
+        "A new rule headline slows crypto buying",
         "Policy Wire",
-        "Bitcoin and Beyond: The Subtler Link",
+        "News clue",
         31,
         -0.54,
     ),
@@ -188,29 +188,53 @@ DOWNWARD_BIAS_NEWS = [
 
 LOW_BIAS_NEWS = [
     NewsCard(
-        "Bitcoin trades inside a narrow short-term range",
+        "Bitcoin stays in a small range",
         "Ticker Desk",
-        "Indirect Connections: Bitcoin's Echoes",
+        "Small clue",
         30,
         0.18,
     ),
     NewsCard(
-        "Options desk says near-term volatility is balanced",
+        "Options traders expect a mixed move",
         "Vol Report",
-        "Bitcoin and Beyond: The Subtler Link",
+        "Mixed clue",
         34,
         -0.16,
     ),
     NewsCard(
-        "Spot volume holds near its daily average",
+        "Trading volume looks normal today",
         "Exchange Beat",
-        "Indirect Connections: Bitcoin's Echoes",
+        "Small clue",
         28,
         0.14,
     ),
 ]
 
 ALL_NEWS = UPWARD_BIAS_NEWS + DOWNWARD_BIAS_NEWS + LOW_BIAS_NEWS
+
+DEMO_NEWS_CARDS = [
+    NewsCard(
+        "Big funds are buying more Bitcoin today",
+        "Demo Wire",
+        "Demo clue",
+        58,
+        0.78,
+    ),
+    NewsCard(
+        "Less Bitcoin is going to exchanges",
+        "Flow Desk",
+        "Demo clue",
+        54,
+        0.62,
+    ),
+    NewsCard(
+        "Risk markets are moving up today",
+        "Market Note",
+        "Demo clue",
+        48,
+        0.42,
+    ),
+]
 
 
 class BitcoinPredictionGame(arcade.Window):
@@ -237,11 +261,17 @@ class BitcoinPredictionGame(arcade.Window):
         self.onboarding_message = "Type your full name to create a practice identity."
         self.player_full_name = ""
         self.balance = STARTING_BALANCE
+        self.demo_balance = STARTING_BALANCE
         self.selected_side = "Up"
         self.selected_amount = DEFAULT_ORDER_AMOUNT
         self.position: Position | None = None
         self.trade_history: list[TradeRecord] = []
         self.dashboard_active = False
+        self.demo_round_active = False
+        self.demo_round_complete = False
+        self.demo_side_picked = False
+        self.demo_amount_picked = False
+        self.demo_read_articles: set[int] = set()
         self.status_message = "Read the articles, choose Up or Down, then buy to start the market."
         self.tick_accumulator = 0.0
         self.price_velocity = 0.0
@@ -251,14 +281,23 @@ class BitcoinPredictionGame(arcade.Window):
         self.news_cards = self._choose_news_cards()
         self.market = self._new_market()
 
-    def _new_market(self) -> MarketState:
+    def _new_market(self, demo_mode: bool = False) -> MarketState:
         self.tick_accumulator = 0.0
         self.price_velocity = 0.0
         self.market_transition = 0.0
         self.position = None
-        self.selected_side = "Up"
-        self.selected_amount = DEFAULT_ORDER_AMOUNT
-        self.news_cards = self._choose_news_cards()
+        if demo_mode:
+            self.selected_side = ""
+            self.selected_amount = 0
+            self.news_cards = list(DEMO_NEWS_CARDS)
+            self.demo_round_complete = False
+            self.demo_side_picked = False
+            self.demo_amount_picked = False
+            self.demo_read_articles = set()
+        else:
+            self.selected_side = "Up"
+            self.selected_amount = DEFAULT_ORDER_AMOUNT
+            self.news_cards = self._choose_news_cards()
 
         starting_price = round(random.uniform(79_750, 80_350), 2)
         history = self._make_opening_history(starting_price)
@@ -282,7 +321,13 @@ class BitcoinPredictionGame(arcade.Window):
         swing_phase = random.uniform(0.0, math.tau)
         swing_cycles = random.uniform(1.8, 3.1)
         call_name = self._player_call_name()
-        self.status_message = f"{call_name}, read the articles. The market starts only after you buy a position."
+        if demo_mode:
+            self.status_message = (
+                f"{call_name}, demo step 1: click each article card. "
+                "This round uses demo cash only."
+            )
+        else:
+            self.status_message = f"{call_name}, read the articles. The market starts only after you buy a position."
 
         return MarketState(
             target_price=starting_price,
@@ -298,6 +343,25 @@ class BitcoinPredictionGame(arcade.Window):
             swing_cycles=swing_cycles,
         )
 
+    def _start_demo_round(self) -> None:
+        self.demo_round_active = True
+        self.demo_balance = STARTING_BALANCE
+        self.dashboard_active = False
+        self.market = self._new_market(demo_mode=True)
+
+    def _finish_demo_round(self) -> None:
+        self.demo_round_active = False
+        self.demo_round_complete = False
+        self.demo_side_picked = False
+        self.demo_amount_picked = False
+        self.demo_read_articles = set()
+        self.demo_balance = STARTING_BALANCE
+        self.market = self._new_market()
+        self.status_message = (
+            f"{self._player_call_name()}, demo done. "
+            "Now this is your real practice market."
+        )
+
     def _choose_news_cards(self) -> list[NewsCard]:
         cards = random.sample(ALL_NEWS, 3)
         for _ in range(12):
@@ -309,6 +373,31 @@ class BitcoinPredictionGame(arcade.Window):
 
     def _combined_news_bias(self) -> float:
         return sum(card.price_bias for card in self.news_cards) / len(self.news_cards)
+
+    def _demo_articles_done(self) -> bool:
+        return len(self.demo_read_articles) >= len(self.news_cards)
+
+    def _update_demo_status(self) -> None:
+        if not self.demo_round_active or self.market.active or self.market.settled:
+            return
+
+        call_name = self._player_call_name()
+        if not self._demo_articles_done():
+            remaining = len(self.news_cards) - len(self.demo_read_articles)
+            card_word = "card" if remaining == 1 else "cards"
+            self.status_message = (
+                f"{call_name}, demo step 1: click every article card. "
+                f"{remaining} {card_word} left."
+            )
+        elif not self.demo_side_picked:
+            self.status_message = f"{call_name}, demo step 2: pick Up or Down."
+        elif not self.demo_amount_picked:
+            self.status_message = f"{call_name}, demo step 3: pick a demo stake."
+        else:
+            self.status_message = (
+                f"{call_name}, demo step 4: click Buy & Start. "
+                "This still uses demo cash only."
+            )
 
     def _make_opening_history(self, ending_price: float) -> list[float]:
         return [ending_price for _ in range(80)]
@@ -404,23 +493,49 @@ class BitcoinPredictionGame(arcade.Window):
         winning_side = "Up" if self.market.current_price >= self.market.target_price else "Down"
         call_name = self._player_call_name()
         if self.position is None:
-            self.status_message = f"{call_name}, market settled {winning_side}. No position was opened."
+            if self.demo_round_active:
+                self.demo_round_complete = True
+                self.status_message = (
+                    f"{call_name}, demo over. {winning_side} won. "
+                    "Click Start Real Market."
+                )
+            else:
+                self.status_message = f"{call_name}, market settled {winning_side}. No position was opened."
             return
 
+        payout = round(self.position.shares, 2)
         if self.position.side == winning_side:
-            payout = round(self.position.shares, 2)
-            self.balance += payout
+            if self.demo_round_active:
+                self.demo_balance += payout
+            else:
+                self.balance += payout
             self.position.resolved_result = "Won"
-            self._record_trade(winning_side, round(payout - self.position.amount, 2))
-            self.status_message = (
-                f"{call_name}, {winning_side} wins. Your ${self.position.amount} position paid ${payout:,.2f}."
-            )
+            if self.demo_round_active:
+                self.demo_round_complete = True
+                self.status_message = (
+                    f"{call_name}, demo over. {winning_side} won. "
+                    f"Your demo cash would be ${self.demo_balance:,.2f}. "
+                    "Click Start Real Market."
+                )
+            else:
+                self._record_trade(winning_side, round(payout - self.position.amount, 2))
+                self.status_message = (
+                    f"{call_name}, {winning_side} wins. Your ${self.position.amount} position paid ${payout:,.2f}."
+                )
         else:
             self.position.resolved_result = "Lost"
-            self._record_trade(winning_side, -float(self.position.amount))
-            self.status_message = (
-                f"{call_name}, {winning_side} wins. Your {self.position.side} position expired at $0."
-            )
+            if self.demo_round_active:
+                self.demo_round_complete = True
+                self.status_message = (
+                    f"{call_name}, demo over. {winning_side} won. "
+                    f"Your demo cash would be ${self.demo_balance:,.2f}. "
+                    "Click Start Real Market."
+                )
+            else:
+                self._record_trade(winning_side, -float(self.position.amount))
+                self.status_message = (
+                    f"{call_name}, {winning_side} wins. Your {self.position.side} position expired at $0."
+                )
 
     def _record_trade(self, winning_side: str, profit_loss: float) -> None:
         if self.position is None:
@@ -441,19 +556,29 @@ class BitcoinPredictionGame(arcade.Window):
 
     def _buy_position(self) -> None:
         call_name = self._player_call_name()
+        available_balance = self.demo_balance if self.demo_round_active else self.balance
         if self.position is not None:
             self.status_message = f"{call_name}, you already bought this market. Wait for settlement."
             return
         if self.market.settled:
             self.status_message = f"{call_name}, this market is settled. Start a new market."
             return
-        if self.selected_amount > self.balance:
+        if not self.selected_side:
+            self.status_message = f"{call_name}, pick Up or Down first."
+            return
+        if self.selected_amount <= 0:
+            self.status_message = f"{call_name}, pick a stake first."
+            return
+        if self.selected_amount > available_balance:
             self.status_message = f"{call_name}, not enough balance for that order amount."
             return
 
         entry_price = self._contract_price(self.selected_side)
         shares = self.selected_amount / (entry_price / 100)
-        self.balance -= self.selected_amount
+        if self.demo_round_active:
+            self.demo_balance -= self.selected_amount
+        else:
+            self.balance -= self.selected_amount
         self.position = Position(
             side=self.selected_side,
             amount=self.selected_amount,
@@ -461,10 +586,16 @@ class BitcoinPredictionGame(arcade.Window):
             shares=shares,
         )
         self.market.active = True
-        self.status_message = (
-            f"Nice, {call_name}. Bought {self.selected_side} for ${self.selected_amount} at {entry_price}c. "
-            "The 15-second market is now live."
-        )
+        if self.demo_round_active:
+            self.status_message = (
+                f"{call_name}, demo order placed: {self.selected_side} at {entry_price}c. "
+                "Watch the demo round settle."
+            )
+        else:
+            self.status_message = (
+                f"Nice, {call_name}. Bought {self.selected_side} for ${self.selected_amount} at {entry_price}c. "
+                "The 15-second market is now live."
+            )
 
     def _contract_price(self, side: str) -> int:
         gap = self.market.current_price - self.market.target_price
@@ -509,18 +640,24 @@ class BitcoinPredictionGame(arcade.Window):
             if clicked_key == "tutorial_continue":
                 self.tutorial_active = False
                 self.market_transition = 0.0
-                self.status_message = (
-                    f"Welcome, {self._player_call_name()}. Read the articles, choose Up or Down, "
-                    "then buy to start the tutorial market."
-                )
+                self._start_demo_round()
             return
 
         if clicked_key == "dashboard_toggle":
             self.dashboard_active = not self.dashboard_active
             return
 
+        if clicked_key.startswith("article_") and self.demo_round_active and not self.market.active and self.position is None:
+            article_index = int(clicked_key.split("_", 1)[1])
+            self.demo_read_articles.add(article_index)
+            self._update_demo_status()
+            return
+
         if clicked_key == "new_market":
-            self.market = self._new_market()
+            if self.demo_round_active and self.market.settled:
+                self._finish_demo_round()
+            else:
+                self.market = self._new_market()
             return
 
         if self.position is not None:
@@ -528,12 +665,30 @@ class BitcoinPredictionGame(arcade.Window):
             return
 
         if clicked_key in ("side_up", "side_down") and not self.market.settled:
+            if self.demo_round_active and not self._demo_articles_done():
+                self._update_demo_status()
+                return
             self.selected_side = "Up" if clicked_key == "side_up" else "Down"
-            self.status_message = f"{self.selected_side} selected, {self._player_call_name()}. Choose amount, then buy."
+            if self.demo_round_active:
+                self.demo_side_picked = True
+                self._update_demo_status()
+            else:
+                self.status_message = f"{self.selected_side} selected, {self._player_call_name()}. Choose amount, then buy."
         elif clicked_key.startswith("amount_") and not self.market.settled:
+            if self.demo_round_active and not self.demo_side_picked:
+                self._update_demo_status()
+                return
             self.selected_amount = int(clicked_key.split("_", 1)[1])
-            self.status_message = f"Order amount set to ${self.selected_amount}."
+            if self.demo_round_active:
+                self.demo_amount_picked = True
+                self._update_demo_status()
+            else:
+                self.status_message = f"Order amount set to ${self.selected_amount}."
         elif clicked_key == "buy":
+            if self.demo_round_active:
+                if not self._demo_articles_done() or not self.demo_side_picked or not self.demo_amount_picked:
+                    self._update_demo_status()
+                    return
             self._buy_position()
 
     def on_text(self, text: str) -> None:
@@ -578,7 +733,7 @@ class BitcoinPredictionGame(arcade.Window):
         self.onboarding_name_active = False
         self.onboarding_active = False
         self.tutorial_active = True
-        self.status_message = "Tutorial opened."
+        self.status_message = "Tutorial opened. The first round will be a guided demo."
 
     def _player_call_name(self) -> str:
         if not self.player_full_name:
@@ -620,8 +775,8 @@ class BitcoinPredictionGame(arcade.Window):
 
         steps = [
             ("1", "Enter your full name", "Use your real full name for the practice identity."),
-            ("2", "Click Start Practice Tutorial", "The button is the only way to move to the next tutorial page."),
-            ("3", "Follow the arrows", "The next page points to the buttons that operate the game."),
+            ("2", "Click Start Practice Tutorial", "This opens the guided demo before the real market starts."),
+            ("3", "Play the demo round", "The first round uses demo cash and walks you through the clicks."),
         ]
         for index, (number, title, detail) in enumerate(steps):
             y = panel_bottom + 370 - index * 92
@@ -706,7 +861,7 @@ class BitcoinPredictionGame(arcade.Window):
 
         arcade.draw_text("Tutorial: read, choose, buy", panel_left + 42, panel_bottom + panel_height - 70, TEXT, 31, bold=True)
         arcade.draw_text(
-            "Simple articles are practice clues. The arrows show which buttons make the game run.",
+            "This page explains the buttons. After this, the first round is a guided demo with demo cash.",
             panel_left + 44,
             panel_bottom + panel_height - 106,
             MUTED,
@@ -762,7 +917,7 @@ class BitcoinPredictionGame(arcade.Window):
         button_color = GREEN if self.hovered_key == "tutorial_continue" else GREEN_DARK
         arcade.draw_lbwh_rectangle_filled(continue_zone.left, continue_zone.bottom, continue_zone.width, continue_zone.height, button_color)
         arcade.draw_lbwh_rectangle_outline(continue_zone.left, continue_zone.bottom, continue_zone.width, continue_zone.height, BORDER, 1)
-        arcade.draw_text("Open Practice Market", continue_zone.center_x, continue_zone.center_y + 1, TEXT, 17, bold=True, anchor_x="center", anchor_y="center")
+        arcade.draw_text("Start Guided Demo", continue_zone.center_x, continue_zone.center_y + 1, TEXT, 17, bold=True, anchor_x="center", anchor_y="center")
 
     def _draw_arrow(self, start_x: float, start_y: float, end_x: float, end_y: float, color: tuple[int, int, int]) -> None:
         arcade.draw_line(start_x, start_y, end_x, end_y, color, 3)
@@ -876,7 +1031,11 @@ class BitcoinPredictionGame(arcade.Window):
         arcade.draw_text("B", left + 32, bottom + height - 42, WHITE, 34, bold=True, anchor_x="center", anchor_y="center")
         arcade.draw_text("BTC Up or Down 15s", left + 88, bottom + height - 31, TEXT, 25, bold=True)
         subtitle = "Read the articles, pick a side, then watch $5 Bitcoin ticks for 15 seconds"
-        if self.market.active:
+        if self.demo_round_active and self.market.settled:
+            subtitle = "Guided demo finished. Your real practice balance did not change."
+        elif self.demo_round_active:
+            subtitle = "Guided demo round. This uses demo cash, not your real practice balance."
+        elif self.market.active:
             subtitle = "Live simulated Bitcoin market"
         elif self.market.settled:
             subtitle = "Settled market"
@@ -1001,7 +1160,12 @@ class BitcoinPredictionGame(arcade.Window):
         if self.hovered_key == buy_key and not buy_disabled:
             buy_color = BLUE if self.market.settled else GREEN
         arcade.draw_lbwh_rectangle_filled(buy_zone.left, buy_zone.bottom, buy_zone.width, buy_zone.height, buy_color)
-        button_text = "New Market" if self.market.settled else "Buy & Start"
+        if self.demo_round_active and self.market.settled:
+            button_text = "Start Real Market"
+        elif self.demo_round_active:
+            button_text = "Buy Demo & Start"
+        else:
+            button_text = "New Market" if self.market.settled else "Buy & Start"
         arcade.draw_text(button_text, buy_zone.center_x, buy_zone.center_y + 2, TEXT if not buy_disabled else MUTED, 18, bold=True, anchor_x="center", anchor_y="center")
 
     def _draw_side_button(self, key: str, label: str, price: int, left: float, bottom: float, width: float, height: float) -> None:
@@ -1040,16 +1204,31 @@ class BitcoinPredictionGame(arcade.Window):
         arcade.draw_text("stake", zone.center_x, zone.center_y - 17, MUTED, 10, anchor_x="center", anchor_y="center")
 
     def _draw_position_summary(self, left: float, top: float, width: float) -> None:
-        arcade.draw_text(f"{self._player_call_name()}'s Balance", left, top, MUTED, 12, bold=True)
-        arcade.draw_text(f"${self.balance:,.2f}", left, top - 28, TEXT, 22, bold=True)
+        balance_label = "Demo Cash" if self.demo_round_active else f"{self._player_call_name()}'s Balance"
+        shown_balance = self.demo_balance if self.demo_round_active else self.balance
+        arcade.draw_text(balance_label, left, top, MUTED, 12, bold=True)
+        arcade.draw_text(f"${shown_balance:,.2f}", left, top - 28, TEXT, 22, bold=True)
         arcade.draw_text(self.status_message, left, top - 74, MUTED, 11, width=int(width), multiline=True)
 
         if self.position is None:
+            if not self.selected_side:
+                arcade.draw_text("Preview", left, top - 120, MUTED, 12, bold=True)
+                arcade.draw_text("Pick Up or Down first", left, top - 146, TEXT, 15, bold=True)
+                arcade.draw_text("The demo will guide you step by step.", left, top - 168, MUTED, 11)
+                return
+            if self.selected_amount <= 0:
+                arcade.draw_text("Preview", left, top - 120, MUTED, 12, bold=True)
+                arcade.draw_text(f"{self.selected_side} selected", left, top - 146, TEXT, 15, bold=True)
+                arcade.draw_text("Now pick a stake to keep going.", left, top - 168, MUTED, 11)
+                return
             price = self._contract_price(self.selected_side)
             shares = self.selected_amount / (price / 100)
             arcade.draw_text("Preview", left, top - 120, MUTED, 12, bold=True)
             arcade.draw_text(f"{self.selected_side}: {price}c per share", left, top - 146, TEXT, 15, bold=True)
-            arcade.draw_text(f"Buy starts timer | Max payout ${shares:,.2f}", left, top - 168, MUTED, 11)
+            if self.demo_round_active:
+                arcade.draw_text(f"Demo only | Max payout ${shares:,.2f}", left, top - 168, MUTED, 11)
+            else:
+                arcade.draw_text(f"Buy starts timer | Max payout ${shares:,.2f}", left, top - 168, MUTED, 11)
             return
 
         result = self.position.resolved_result or "Open"
@@ -1070,15 +1249,37 @@ class BitcoinPredictionGame(arcade.Window):
         card_height = 152
 
         arcade.draw_text("Bitcoin articles", left, bottom + card_height + 22, TEXT, 17, bold=True)
-        arcade.draw_text("Read the clues before choosing. No automatic conclusion is shown.", left + 180, bottom + card_height + 23, MUTED, 12)
+        if self.demo_round_active and not self.market.active and not self.market.settled:
+            article_note = "Demo step 1: click each card once, then pick a side."
+        else:
+            article_note = "Read the clues before choosing. No automatic conclusion is shown."
+        arcade.draw_text(article_note, left + 180, bottom + card_height + 23, MUTED, 12)
         for index, card in enumerate(self.news_cards):
             card_left = left + index * (card_width + gap)
-            self._draw_news_card(card, card_left, bottom, card_width, card_height)
+            card_key = None
+            card_read = False
+            if self.demo_round_active and not self.market.active and not self.market.settled:
+                card_key = f"article_{index}"
+                card_read = index in self.demo_read_articles
+            self._draw_news_card(card, card_left, bottom, card_width, card_height, card_key, card_read)
 
-    def _draw_news_card(self, card: NewsCard, left: float, bottom: float, width: float, height: float) -> None:
+    def _draw_news_card(
+        self,
+        card: NewsCard,
+        left: float,
+        bottom: float,
+        width: float,
+        height: float,
+        card_key: str | None = None,
+        card_read: bool = False,
+    ) -> None:
+        if card_key is not None:
+            self.click_zones.append(ClickZone(card_key, left, bottom, width, height))
         arcade.draw_lbwh_rectangle_filled(left, bottom, width, height, PANEL)
-        arcade.draw_lbwh_rectangle_outline(left, bottom, width, height, BORDER, 1)
-        arcade.draw_lbwh_rectangle_filled(left, bottom + height - 8, width, 8, BLUE)
+        outline_color = BLUE if card_read else BORDER
+        arcade.draw_lbwh_rectangle_outline(left, bottom, width, height, outline_color, 1)
+        top_color = GREEN if card_read else BLUE
+        arcade.draw_lbwh_rectangle_filled(left, bottom + height - 8, width, 8, top_color)
 
         inset = 16
         content_width = int(width - inset * 2)
@@ -1093,6 +1294,9 @@ class BitcoinPredictionGame(arcade.Window):
             bold=True,
             anchor_x="right",
         )
+        if card_key is not None:
+            card_state = "Read" if card_read else "Click to read"
+            arcade.draw_text(card_state, left + width - inset, bottom + 8, MUTED, 9, bold=True, anchor_x="right")
         arcade.draw_text(
             card.analysis_label,
             left + inset,

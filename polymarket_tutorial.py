@@ -22,18 +22,18 @@ class TutorialClickTarget:
 SIMPLE_TUTORIAL_ARTICLES = [
     TutorialArticle(
         "Market Brief",
-        "Bitcoin moves higher after buyers return",
-        "A positive article can be a clue that Up may become more expensive.",
+        "More people are buying Bitcoin today",
+        "When buyers show up, price can move up fast.",
     ),
     TutorialArticle(
         "Risk Desk",
-        "Crypto slips after traders sell the rally",
-        "A negative article can be a clue that Down may become more expensive.",
+        "Some traders are selling after the last jump",
+        "When selling grows, price can move down.",
     ),
     TutorialArticle(
         "Ticker Watch",
-        "Price stays flat while volume slows",
-        "A neutral article means the choice is less obvious, so compare the prices.",
+        "Price is moving slowly right now",
+        "A weak clue means you have to think a bit more.",
     ),
 ]
 
@@ -41,16 +41,16 @@ TUTORIAL_CLICK_TARGETS = [
     TutorialClickTarget(
         "Up / Down",
         "Choose a side",
-        "Pick the outcome you think will win.",
+        "Pick the side you think will win.",
     ),
     TutorialClickTarget(
         "$ Amount",
         "Choose a stake",
-        "Set how much practice cash to risk.",
+        "Pick how much demo cash to use.",
     ),
     TutorialClickTarget(
         "Buy",
         "Start the market",
-        "Place the mock order to make the timer run.",
+        "Start the demo round.",
     ),
 ]
