@@ -103,7 +103,8 @@ class BitcoinPredictionGame(arcade.Window):
     def _new_market(self, demo_mode: bool = False) -> MarketState:
         self.tick_accumulator = 0.0
         self.price_velocity = 0.0
-        self.market_transition = 0.0
+        # Keep click response immediate: do not fade in a post-click transition overlay.
+        self.market_transition = 1.0
         self._chart_prices_cache = []
         self._chart_prices_dirty = True
         self.position = None
@@ -433,7 +434,7 @@ class BitcoinPredictionGame(arcade.Window):
         if self.tutorial_active:
             if clicked_key == "tutorial_continue":
                 self.tutorial_active = False
-                self.market_transition = 0.0
+                self.market_transition = 1.0
                 self._start_demo_round()
             return
 
