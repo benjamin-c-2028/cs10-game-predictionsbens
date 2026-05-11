@@ -22,9 +22,7 @@ PRICE_STEP_DOLLARS = 5
 PRICE_TICK_SECONDS = 1 / 30
 PRICE_HISTORY_LIMIT = 180
 MARKET_TRANSITION_SPEED = 3.4
-<<<<<<< HEAD
 MAX_FULL_NAME_CHARS = 32
-=======
 MAX_FRAME_SECONDS = 1 / 20
 ARTICLE_FORCE = 4.0
 ARTICLE_END_PULL = 0.15
@@ -33,7 +31,6 @@ PRICE_WAVE_FORCE = 1.2
 PRICE_NOISE = 12.0
 VELOCITY_DAMPING = 1.25
 MAX_PRICE_VELOCITY = 58.0
->>>>>>> 94b6a98 (Mon, May 11, 2026, 9:30 AM -07:00)
 
 BACKGROUND = (8, 12, 17)
 HEADER = (12, 18, 25)
@@ -116,153 +113,87 @@ class ClickZone:
 
 UPWARD_BIAS_NEWS = [
     NewsCard(
-        "Bitcoin funds see steady buying",
+        "Bitcoin ETF desks report steady inflows",
         "Crypto Wire",
-<<<<<<< HEAD
         "High-Impact Analysis",
         50,
-        0.42,
-=======
-        "Major market signal",
-        0.92,
         0.82,
->>>>>>> 94b6a98 (Mon, May 11, 2026, 9:30 AM -07:00)
     ),
     NewsCard(
-        "Miners send fewer coins to exchanges",
+        "Miners slow BTC transfers to exchanges",
         "Block Ledger",
-<<<<<<< HEAD
         "Indirect Connections: Bitcoin's Echoes",
         38,
-        0.34,
-=======
-        "Related market clue",
-        0.76,
         0.64,
->>>>>>> 94b6a98 (Mon, May 11, 2026, 9:30 AM -07:00)
     ),
     NewsCard(
-        "Markets rise after softer rate talk",
+        "Risk assets bounce after softer rate comments",
         "Macro Desk",
-<<<<<<< HEAD
         "Bitcoin and Beyond: The Subtler Link",
         44,
-        0.31,
-=======
-        "Background market clue",
-        0.80,
         0.58,
->>>>>>> 94b6a98 (Mon, May 11, 2026, 9:30 AM -07:00)
     ),
     NewsCard(
-        "More cash moves onto crypto exchanges",
+        "Stablecoin liquidity rises across major exchanges",
         "Market Pulse",
-<<<<<<< HEAD
         "Indirect Connections: Bitcoin's Echoes",
         35,
-        0.26,
-=======
-        "Related market clue",
-        0.76,
         0.52,
->>>>>>> 94b6a98 (Mon, May 11, 2026, 9:30 AM -07:00)
     ),
 ]
 
 DOWNWARD_BIAS_NEWS = [
     NewsCard(
-        "More Bitcoin moves onto exchanges",
+        "Exchange wallets receive a burst of BTC deposits",
         "Chain Watch",
-<<<<<<< HEAD
         "High-Impact Analysis",
         52,
-        -0.39,
-=======
-        "Major market signal",
-        0.92,
         -0.82,
->>>>>>> 94b6a98 (Mon, May 11, 2026, 9:30 AM -07:00)
     ),
     NewsCard(
-        "Strong dollar weighs on crypto",
+        "Dollar strength pressures crypto markets",
         "Macro Desk",
-<<<<<<< HEAD
         "Bitcoin and Beyond: The Subtler Link",
         42,
-        -0.33,
-=======
-        "Background market clue",
-        0.80,
         -0.62,
->>>>>>> 94b6a98 (Mon, May 11, 2026, 9:30 AM -07:00)
     ),
     NewsCard(
-        "Crowded long bets face pressure",
+        "Leveraged longs face liquidation risk",
         "Derivatives Daily",
-<<<<<<< HEAD
         "High-Impact Analysis",
         48,
-        -0.36,
-=======
-        "Major market signal",
-        0.92,
         -0.72,
->>>>>>> 94b6a98 (Mon, May 11, 2026, 9:30 AM -07:00)
     ),
     NewsCard(
-        "New regulation headline slows crypto",
+        "Regulatory headline cools crypto momentum",
         "Policy Wire",
-<<<<<<< HEAD
         "Bitcoin and Beyond: The Subtler Link",
         31,
-        -0.28,
-=======
-        "Background market clue",
-        0.80,
         -0.54,
->>>>>>> 94b6a98 (Mon, May 11, 2026, 9:30 AM -07:00)
     ),
 ]
 
 LOW_BIAS_NEWS = [
     NewsCard(
-        "Bitcoin holds a tight range",
+        "Bitcoin trades inside a narrow short-term range",
         "Ticker Desk",
-<<<<<<< HEAD
         "Indirect Connections: Bitcoin's Echoes",
         30,
-        0.02,
-=======
-        "Related market clue",
-        0.76,
         0.18,
->>>>>>> 94b6a98 (Mon, May 11, 2026, 9:30 AM -07:00)
     ),
     NewsCard(
-        "Options traders expect balanced moves",
+        "Options desk says near-term volatility is balanced",
         "Vol Report",
-<<<<<<< HEAD
         "Bitcoin and Beyond: The Subtler Link",
         34,
-        -0.01,
-=======
-        "Background market clue",
-        0.80,
         -0.16,
->>>>>>> 94b6a98 (Mon, May 11, 2026, 9:30 AM -07:00)
     ),
     NewsCard(
-        "Trading volume stays near average",
+        "Spot volume holds near its daily average",
         "Exchange Beat",
-<<<<<<< HEAD
         "Indirect Connections: Bitcoin's Echoes",
         28,
-        0.00,
-=======
-        "Related market clue",
-        0.76,
         0.14,
->>>>>>> 94b6a98 (Mon, May 11, 2026, 9:30 AM -07:00)
     ),
 ]
 
@@ -277,14 +208,13 @@ class BitcoinPredictionGame(arcade.Window):
             WINDOW_WIDTH,
             WINDOW_HEIGHT,
             WINDOW_TITLE,
-            resizable=True,
+            resizable=False,
             update_rate=1 / 60,
             draw_rate=1 / 60,
             antialiasing=True,
             samples=4,
             vsync=True,
         )
-        self.set_minimum_size(1280, 720)
         arcade.set_background_color(BACKGROUND)
 
         self.onboarding_active = True
@@ -297,13 +227,9 @@ class BitcoinPredictionGame(arcade.Window):
         self.selected_side = "Up"
         self.selected_amount = DEFAULT_ORDER_AMOUNT
         self.position: Position | None = None
-<<<<<<< HEAD
         self.trade_history: list[TradeRecord] = []
         self.dashboard_active = False
         self.status_message = "Read the articles, choose Up or Down, then buy to start the market."
-=======
-        self.status_message = "Read the article. Pick Up or Down. Buy to start."
->>>>>>> 94b6a98 (Mon, May 11, 2026, 9:30 AM -07:00)
         self.tick_accumulator = 0.0
         self.price_velocity = 0.0
         self.market_transition = 1.0
@@ -323,14 +249,9 @@ class BitcoinPredictionGame(arcade.Window):
 
         starting_price = round(random.uniform(79_750, 80_350), 2)
         history = self._make_opening_history(starting_price)
-<<<<<<< HEAD
         price_bias = self._combined_news_bias()
         call_name = self._player_call_name()
         self.status_message = f"{call_name}, read the articles. The market starts only after you buy a position."
-=======
-        price_bias = self.news_card.price_bias
-        self.status_message = "Read first. Buy starts the round."
->>>>>>> 94b6a98 (Mon, May 11, 2026, 9:30 AM -07:00)
 
         return MarketState(
             target_price=starting_price,
@@ -342,16 +263,17 @@ class BitcoinPredictionGame(arcade.Window):
             price_bias=price_bias,
         )
 
-<<<<<<< HEAD
     def _choose_news_cards(self) -> list[NewsCard]:
-        return random.sample(ALL_NEWS, 3)
+        cards = random.sample(ALL_NEWS, 3)
+        for _ in range(12):
+            average_bias = sum(card.price_bias for card in cards) / len(cards)
+            if abs(average_bias) >= 0.18:
+                return cards
+            cards = random.sample(ALL_NEWS, 3)
+        return cards
 
     def _combined_news_bias(self) -> float:
         return sum(card.price_bias for card in self.news_cards) / len(self.news_cards)
-=======
-    def _choose_news_card(self) -> NewsCard:
-        return random.choice(UPWARD_BIAS_NEWS + DOWNWARD_BIAS_NEWS)
->>>>>>> 94b6a98 (Mon, May 11, 2026, 9:30 AM -07:00)
 
     def _make_opening_history(self, ending_price: float) -> list[float]:
         return [ending_price for _ in range(80)]
@@ -376,13 +298,10 @@ class BitcoinPredictionGame(arcade.Window):
         self._draw_transition_overlay()
 
     def on_update(self, delta_time: float) -> None:
-<<<<<<< HEAD
         if self.onboarding_active or self.tutorial_active or self.dashboard_active:
             return
 
-=======
         delta_time = min(delta_time, MAX_FRAME_SECONDS)
->>>>>>> 94b6a98 (Mon, May 11, 2026, 9:30 AM -07:00)
         self.market_transition = min(
             1.0,
             self.market_transition + delta_time * MARKET_TRANSITION_SPEED,
@@ -410,21 +329,6 @@ class BitcoinPredictionGame(arcade.Window):
     def _advance_price(self, delta_time: float) -> None:
         progress = self.market.elapsed_seconds / MARKET_DURATION_SECONDS
         previous = self.market.current_price
-<<<<<<< HEAD
-        current_delta = previous - self.market.target_price
-        article_delta = self.market.price_bias * 160
-        wave_delta = (
-            math.sin(progress * math.tau * 1.35) * 42
-            + math.sin(progress * math.tau * 3.6) * 18
-        )
-        noise_delta = random.uniform(-10, 10)
-        desired_delta = max(-125, min(135, article_delta + wave_delta + noise_delta))
-        easing = min(1.0, delta_time * 3.0)
-        new_delta = current_delta + (desired_delta - current_delta) * easing
-
-        stepped_price = round((self.market.target_price + new_delta) / PRICE_STEP_DOLLARS) * PRICE_STEP_DOLLARS
-        self.market.current_price = round(max(1000, stepped_price), 2)
-=======
         article_force = self.market.price_bias * ARTICLE_FORCE
         closing_pull = self.market.price_bias * ARTICLE_FORCE * ARTICLE_END_PULL * progress
         gravity_force = (self.market.target_price - previous) * PRICE_GRAVITY
@@ -439,7 +343,6 @@ class BitcoinPredictionGame(arcade.Window):
 
         new_price = previous + self.price_velocity * delta_time
         self.market.current_price = round(max(1000, new_price), 2)
->>>>>>> 94b6a98 (Mon, May 11, 2026, 9:30 AM -07:00)
 
     def _settle_market(self) -> None:
         self.market.active = False
@@ -448,11 +351,7 @@ class BitcoinPredictionGame(arcade.Window):
         winning_side = "Up" if self.market.current_price >= self.market.target_price else "Down"
         call_name = self._player_call_name()
         if self.position is None:
-<<<<<<< HEAD
             self.status_message = f"{call_name}, market settled {winning_side}. No position was opened."
-=======
-            self.status_message = f"{winning_side} wins. You did not buy."
->>>>>>> 94b6a98 (Mon, May 11, 2026, 9:30 AM -07:00)
             return
 
         if self.position.side == winning_side:
@@ -461,21 +360,13 @@ class BitcoinPredictionGame(arcade.Window):
             self.position.resolved_result = "Won"
             self._record_trade(winning_side, round(payout - self.position.amount, 2))
             self.status_message = (
-<<<<<<< HEAD
                 f"{call_name}, {winning_side} wins. Your ${self.position.amount} position paid ${payout:,.2f}."
-=======
-                f"{winning_side} wins. You get ${payout:,.2f}."
->>>>>>> 94b6a98 (Mon, May 11, 2026, 9:30 AM -07:00)
             )
         else:
             self.position.resolved_result = "Lost"
             self._record_trade(winning_side, -float(self.position.amount))
             self.status_message = (
-<<<<<<< HEAD
                 f"{call_name}, {winning_side} wins. Your {self.position.side} position expired at $0."
-=======
-                f"{winning_side} wins. Your {self.position.side} pick lost."
->>>>>>> 94b6a98 (Mon, May 11, 2026, 9:30 AM -07:00)
             )
 
     def _record_trade(self, winning_side: str, profit_loss: float) -> None:
@@ -498,7 +389,6 @@ class BitcoinPredictionGame(arcade.Window):
     def _buy_position(self) -> None:
         call_name = self._player_call_name()
         if self.position is not None:
-<<<<<<< HEAD
             self.status_message = f"{call_name}, you already bought this market. Wait for settlement."
             return
         if self.market.settled:
@@ -506,15 +396,6 @@ class BitcoinPredictionGame(arcade.Window):
             return
         if self.selected_amount > self.balance:
             self.status_message = f"{call_name}, not enough balance for that order amount."
-=======
-            self.status_message = "You already bought. Wait for the result."
-            return
-        if self.market.settled:
-            self.status_message = "This round is done. Start a new one."
-            return
-        if self.selected_amount > self.balance:
-            self.status_message = "Not enough balance."
->>>>>>> 94b6a98 (Mon, May 11, 2026, 9:30 AM -07:00)
             return
 
         entry_price = self._contract_price(self.selected_side)
@@ -528,13 +409,8 @@ class BitcoinPredictionGame(arcade.Window):
         )
         self.market.active = True
         self.status_message = (
-<<<<<<< HEAD
             f"Nice, {call_name}. Bought {self.selected_side} for ${self.selected_amount} at {entry_price}c. "
             "The 15-second market is now live."
-=======
-            f"Bought {self.selected_side} for ${self.selected_amount} at {entry_price}c. "
-            "The round is live."
->>>>>>> 94b6a98 (Mon, May 11, 2026, 9:30 AM -07:00)
         )
 
     def _contract_price(self, side: str) -> int:
@@ -594,11 +470,7 @@ class BitcoinPredictionGame(arcade.Window):
             return
 
         if self.position is not None:
-<<<<<<< HEAD
             self.status_message = f"{self._player_call_name()}, trade is locked. Watch the market settle."
-=======
-            self.status_message = "Your pick is locked. Wait for the result."
->>>>>>> 94b6a98 (Mon, May 11, 2026, 9:30 AM -07:00)
             return
 
         if clicked_key in ("side_up", "side_down") and not self.market.settled:
@@ -606,11 +478,10 @@ class BitcoinPredictionGame(arcade.Window):
             self.status_message = f"{self.selected_side} selected, {self._player_call_name()}. Choose amount, then buy."
         elif clicked_key.startswith("amount_") and not self.market.settled:
             self.selected_amount = int(clicked_key.split("_", 1)[1])
-            self.status_message = f"Amount set to ${self.selected_amount}."
+            self.status_message = f"Order amount set to ${self.selected_amount}."
         elif clicked_key == "buy":
             self._buy_position()
 
-<<<<<<< HEAD
     def on_text(self, text: str) -> None:
         if not self.onboarding_active or not self.onboarding_name_active:
             return
@@ -848,72 +719,17 @@ class BitcoinPredictionGame(arcade.Window):
         left = (end_x + math.cos(left_angle) * size, end_y + math.sin(left_angle) * size)
         right = (end_x + math.cos(right_angle) * size, end_y + math.sin(right_angle) * size)
         arcade.draw_triangle_filled(end_x, end_y, left[0], left[1], right[0], right[1], color)
-=======
-    def _scale(self) -> float:
-        return max(0.72, min(1.2, min(self.width / WINDOW_WIDTH, self.height / WINDOW_HEIGHT)))
-
-    def _font(self, size: float) -> int:
-        return max(9, round(size * self._scale()))
-
-    def _layout(self) -> dict[str, float]:
-        scale = self._scale()
-        margin = max(26, 54 * scale)
-        header_height = 64 * scale
-        nav_gap = 52 * scale
-        content_top = self.height - header_height - nav_gap - 26 * scale
-        content_bottom = max(24, 32 * scale)
-        gap = max(20, 30 * scale)
-        ticket_width = min(max(310, self.width * 0.25), 430 * scale)
-        left_width = self.width - margin * 2 - gap - ticket_width
-        article_height = min(max(138, self.height * 0.20), 205 * scale)
-        article_bottom = content_bottom
-        article_top = article_bottom + article_height
-        article_title_gap = 44 * scale
-        market_bottom = article_top + article_title_gap + 38 * scale
-        market_height = max(300, content_top - market_bottom)
-
-        if left_width < 690:
-            ticket_width = max(292, self.width - margin * 2 - gap - 690)
-            left_width = self.width - margin * 2 - gap - ticket_width
-
-        return {
-            "scale": scale,
-            "margin": margin,
-            "header_height": header_height,
-            "nav_y": self.height - header_height - 38 * scale,
-            "content_top": content_top,
-            "gap": gap,
-            "left": margin,
-            "left_width": left_width,
-            "ticket_left": margin + left_width + gap,
-            "ticket_width": ticket_width,
-            "ticket_bottom": content_bottom,
-            "ticket_height": content_top - content_bottom,
-            "market_bottom": market_bottom,
-            "market_height": market_height,
-            "article_bottom": article_bottom,
-            "article_height": article_height,
-        }
->>>>>>> 94b6a98 (Mon, May 11, 2026, 9:30 AM -07:00)
 
     def _draw_header(self) -> None:
-        layout = self._layout()
-        scale = layout["scale"]
-        header_height = layout["header_height"]
-        margin = layout["margin"]
+        arcade.draw_lbwh_rectangle_filled(0, WINDOW_HEIGHT - 74, WINDOW_WIDTH, 74, HEADER)
+        arcade.draw_line(0, WINDOW_HEIGHT - 74, WINDOW_WIDTH, WINDOW_HEIGHT - 74, BORDER, 1)
 
-        arcade.draw_lbwh_rectangle_filled(0, self.height - header_height, self.width, header_height, HEADER)
-        arcade.draw_line(0, self.height - header_height, self.width, self.height - header_height, BORDER, 1)
+        arcade.draw_text("PolyArcade", 70, WINDOW_HEIGHT - 45, TEXT, 24, bold=True, anchor_y="center")
+        arcade.draw_text("<>", 40, WINDOW_HEIGHT - 45, TEXT, 18, bold=True, anchor_y="center")
 
-        arcade.draw_text("PolyArcade", margin + 34 * scale, self.height - header_height / 2, TEXT, self._font(26), bold=True, anchor_y="center")
-        arcade.draw_text("<>", margin, self.height - header_height / 2, TEXT, self._font(19), bold=True, anchor_y="center")
+        arcade.draw_lbwh_rectangle_filled(310, WINDOW_HEIGHT - 58, 560, 36, PANEL_ALT)
+        arcade.draw_text("Search simulated markets...", 334, WINDOW_HEIGHT - 41, MUTED_DARK, 13, anchor_y="center")
 
-        search_left = margin + 255 * scale
-        search_width = min(520 * scale, max(260, self.width * 0.35))
-        arcade.draw_lbwh_rectangle_filled(search_left, self.height - header_height / 2 - 18 * scale, search_width, 36 * scale, PANEL_ALT)
-        arcade.draw_text("Search markets...", search_left + 22 * scale, self.height - header_height / 2, MUTED_DARK, self._font(14), anchor_y="center")
-
-<<<<<<< HEAD
         self._draw_dashboard_button("Dashboard")
 
     def _draw_dashboard_button(self, label: str) -> None:
@@ -994,82 +810,53 @@ class BitcoinPredictionGame(arcade.Window):
             arcade.draw_text(trade.result, table_left + 760, row_y, pnl_color, 13, bold=True)
             arcade.draw_text(self._format_delta(trade.profit_loss), table_left + 900, row_y, pnl_color, 13, bold=True)
             arcade.draw_text(self._format_money(trade.balance_after), table_left + 1040, row_y, TEXT, 13)
-=======
-        labels = ["Trending", "Crypto", "Breaking", "Macro", "Economy", "Tech", "More"]
-        x = margin
-        for label in labels:
-            color = BLUE if label == "Crypto" else MUTED
-            arcade.draw_text(label, x, layout["nav_y"], color, self._font(15), bold=label == "Crypto")
-            x += 126 * scale
-
-        arcade.draw_text("Practice only", self.width - margin, self.height - header_height / 2, MUTED, self._font(14), anchor_x="right", anchor_y="center")
->>>>>>> 94b6a98 (Mon, May 11, 2026, 9:30 AM -07:00)
 
     def _draw_market(self) -> None:
-        layout = self._layout()
-        scale = layout["scale"]
-        left = layout["left"]
-        bottom = layout["market_bottom"]
-        width = layout["left_width"]
-        height = layout["market_height"]
+        left = 70
+        bottom = 246
+        width = 900
+        height = 500
 
         arcade.draw_lbwh_rectangle_filled(left, bottom, width, height, BACKGROUND)
-<<<<<<< HEAD
         arcade.draw_lbwh_rectangle_filled(left, bottom + height - 74, 64, 64, ORANGE)
         arcade.draw_text("B", left + 32, bottom + height - 42, WHITE, 34, bold=True, anchor_x="center", anchor_y="center")
         arcade.draw_text("BTC Up or Down 15s", left + 88, bottom + height - 31, TEXT, 25, bold=True)
         subtitle = "Read the articles, pick a side, then watch $5 Bitcoin ticks for 15 seconds"
-=======
-        icon_size = 62 * scale
-        arcade.draw_lbwh_rectangle_filled(left, bottom + height - icon_size - 8 * scale, icon_size, icon_size, ORANGE)
-        arcade.draw_text("B", left + icon_size / 2, bottom + height - icon_size / 2 - 8 * scale, WHITE, self._font(34), bold=True, anchor_x="center", anchor_y="center")
-        arcade.draw_text("BTC Up or Down 15s", left + icon_size + 28 * scale, bottom + height - 33 * scale, TEXT, self._font(28), bold=True)
-        subtitle = "Read. Pick Up or Down. Buy starts the round."
->>>>>>> 94b6a98 (Mon, May 11, 2026, 9:30 AM -07:00)
         if self.market.active:
-            subtitle = "Live market"
+            subtitle = "Live simulated Bitcoin market"
         elif self.market.settled:
             subtitle = "Settled market"
-        arcade.draw_text(subtitle, left + icon_size + 28 * scale, bottom + height - 67 * scale, MUTED, self._font(16), bold=True)
+        arcade.draw_text(subtitle, left + 88, bottom + height - 61, MUTED, 14, bold=True)
 
-        stats_y = bottom + height - 130 * scale
-        price_font = self._font(25)
-        label_font = self._font(12)
-        arcade.draw_text("Target Price", left, stats_y, MUTED, self._font(13), bold=True)
-        arcade.draw_text(self._format_money(self.market.target_price), left, stats_y - 34 * scale, TEXT, price_font, bold=True)
-        divider_x = left + min(300 * scale, width * 0.25)
-        arcade.draw_line(divider_x, stats_y - 42 * scale, divider_x, stats_y + 14 * scale, BORDER, 1)
+        stats_y = bottom + height - 132
+        arcade.draw_text("Price To Beat", left, stats_y, MUTED, 12, bold=True)
+        arcade.draw_text(self._format_money(self.market.target_price), left, stats_y - 42, TEXT, 27, bold=True)
+        arcade.draw_line(left + 240, stats_y - 48, left + 240, stats_y + 14, BORDER, 1)
 
         current_color = GREEN if self.market.current_price >= self.market.target_price else RED
-        current_x = divider_x + 38 * scale
-        arcade.draw_text("Current Price", current_x, stats_y, ORANGE, label_font, bold=True)
-        arcade.draw_text(self._format_money(self.market.current_price), current_x, stats_y - 34 * scale, current_color, price_font, bold=True)
+        arcade.draw_text("Current Price", left + 282, stats_y, ORANGE, 12, bold=True)
+        arcade.draw_text(self._format_money(self.market.current_price), left + 282, stats_y - 42, current_color, 27, bold=True)
         arcade.draw_text(
             self._format_delta(self.market.current_price - self.market.target_price),
-            current_x + 252 * scale,
-            stats_y - 24 * scale,
+            left + 505,
+            stats_y - 25,
             current_color,
-            self._font(13),
+            14,
             bold=True,
         )
 
-        remaining = max(0, math.ceil(MARKET_DURATION_SECONDS - self.market.elapsed_seconds))
+        remaining = max(0, MARKET_DURATION_SECONDS - int(self.market.elapsed_seconds))
+        minutes, seconds = divmod(remaining, 60)
         timer_color = MUTED if self.market.settled or not self.market.active else RED
-        timer_x = left + width - 70 * scale
-        arcade.draw_text(f"{remaining:02d}", timer_x, stats_y - 28 * scale, timer_color, self._font(34), bold=True, anchor_x="center")
-        arcade.draw_text("SECS", timer_x, stats_y - 58 * scale, MUTED, self._font(11), bold=True, anchor_x="center")
+        arcade.draw_text(f"{minutes:02d}", left + width - 112, stats_y - 22, timer_color, 30, bold=True, anchor_x="center")
+        arcade.draw_text(f"{seconds:02d}", left + width - 54, stats_y - 22, timer_color, 30, bold=True, anchor_x="center")
+        arcade.draw_text("MINS", left + width - 112, stats_y - 48, MUTED, 10, bold=True, anchor_x="center")
+        arcade.draw_text("SECS", left + width - 54, stats_y - 48, MUTED, 10, bold=True, anchor_x="center")
         if not self.market.active and not self.market.settled:
-            arcade.draw_text("WAITING", timer_x, stats_y + 10 * scale, YELLOW, self._font(13), bold=True, anchor_x="center")
+            arcade.draw_text("WAITING", left + width - 84, stats_y + 15, YELLOW, 12, bold=True, anchor_x="center")
 
-        chart_bottom = bottom + 46 * scale
-        max_progress_bottom = stats_y - 70 * scale
-        chart_height = min(
-            max(140, height - 350 * scale),
-            max(120, max_progress_bottom - chart_bottom - 30 * scale),
-        )
-        progress_bottom = chart_bottom + chart_height + 30 * scale
-        self._draw_progress_bar(left, progress_bottom, width - 18 * scale, max(5, 7 * scale))
-        self._draw_chart(left, chart_bottom, width, chart_height)
+        self._draw_progress_bar(left, bottom + height - 202, width - 24, 6)
+        self._draw_chart(left, bottom + 44, width, 252)
 
     def _draw_progress_bar(self, left: float, bottom: float, width: float, height: float) -> None:
         progress = self.market.elapsed_seconds / MARKET_DURATION_SECONDS
@@ -1082,15 +869,13 @@ class BitcoinPredictionGame(arcade.Window):
             arcade.draw_lbwh_rectangle_filled(left, bottom, fill_width, height, fill_color)
 
     def _draw_chart(self, left: float, bottom: float, width: float, height: float) -> None:
-        scale = self._scale()
-        chart_width = width - 18 * scale
-        arcade.draw_lbwh_rectangle_filled(left, bottom, chart_width, height, (5, 10, 15))
-        arcade.draw_lbwh_rectangle_outline(left, bottom, chart_width, height, BORDER, 1)
+        arcade.draw_lbwh_rectangle_filled(left, bottom, width - 24, height, (12, 16, 20))
+        arcade.draw_lbwh_rectangle_outline(left, bottom, width - 24, height, (24, 31, 39), 1)
 
         for row in range(5):
             y = bottom + row * height / 4
-            grid_color = (48, 65, 82) if row in (0, 4) else (28, 41, 54)
-            arcade.draw_line(left, y, left + chart_width, y, grid_color, 1)
+            grid_color = (41, 51, 63) if row in (0, 4) else (27, 35, 44)
+            arcade.draw_line(left, y, left + width - 24, y, grid_color, 1)
 
         prices = self.market.history
         chart_min = min(prices + [self.market.target_price - 75])
@@ -1101,11 +886,11 @@ class BitcoinPredictionGame(arcade.Window):
         span = max(1, high - low)
 
         target_y = bottom + ((self.market.target_price - low) / span) * height
-        arcade.draw_line(left, target_y, left + chart_width, target_y, (190, 118, 35), max(1, round(2 * scale)))
-        arcade.draw_text("Target", left + chart_width - 78 * scale, target_y + 10 * scale, YELLOW, self._font(12), bold=True)
+        arcade.draw_line(left, target_y, left + width - 24, target_y, (143, 97, 45), 2)
+        arcade.draw_text("Target", left + width - 76, target_y + 8, YELLOW, 11, bold=True)
 
         points: list[tuple[float, float]] = []
-        step = (chart_width - 18 * scale) / max(1, len(prices) - 1)
+        step = (width - 46) / max(1, len(prices) - 1)
         for index, price in enumerate(prices):
             x = left + index * step
             y = bottom + ((price - low) / span) * height
@@ -1113,60 +898,49 @@ class BitcoinPredictionGame(arcade.Window):
 
         if len(points) > 1:
             area_points = [(points[0][0], bottom), *points, (points[-1][0], bottom)]
-            arcade.draw_polygon_filled(area_points, (255, 151, 24, 34))
-            arcade.draw_line_strip(points, (255, 151, 24, 95), max(3, round(6 * scale)))
-            arcade.draw_line_strip(points, ORANGE, max(2, round(3 * scale)))
-            arcade.draw_circle_filled(points[-1][0], points[-1][1], max(4, 5 * scale), ORANGE)
-            arcade.draw_circle_outline(points[-1][0], points[-1][1], max(8, 10 * scale), (255, 151, 24, 110), max(1, round(2 * scale)))
+            arcade.draw_polygon_filled(area_points, (247, 151, 38, 28))
+            arcade.draw_line_strip(points, (247, 151, 38, 80), 7)
+            arcade.draw_line_strip(points, ORANGE, 3)
+            arcade.draw_circle_filled(points[-1][0], points[-1][1], 5, ORANGE)
+            arcade.draw_circle_outline(points[-1][0], points[-1][1], 10, (247, 151, 38, 90), 2)
 
         for index, value in enumerate((low, (low + high) / 2, high)):
             y = bottom + index * height / 2
-            arcade.draw_text(self._format_money(value), left + chart_width - 10 * scale, y - 8 * scale, MUTED_DARK, self._font(11), anchor_x="right")
+            arcade.draw_text(self._format_money(value), left + width - 12, y - 8, MUTED_DARK, 11, anchor_x="right")
 
-        arcade.draw_text("Market start", left, bottom - 28 * scale, MUTED_DARK, self._font(12))
+        arcade.draw_text("Market start", left, bottom - 28, MUTED_DARK, 11)
         right_label = "Live now" if self.market.active else "Paused"
         if self.market.settled:
             right_label = "Settled"
-        arcade.draw_text(right_label, left + chart_width - 80 * scale, bottom - 28 * scale, MUTED_DARK, self._font(12))
+        arcade.draw_text(right_label, left + width - 78, bottom - 28, MUTED_DARK, 11)
 
     def _draw_ticket(self) -> None:
-        layout = self._layout()
-        scale = layout["scale"]
-        left = layout["ticket_left"]
-        bottom = layout["ticket_bottom"]
-        width = layout["ticket_width"]
-        height = layout["ticket_height"]
-        pad = max(18, 28 * scale)
+        left = 1018
+        bottom = 96
+        width = 352
+        height = 650
 
         arcade.draw_lbwh_rectangle_filled(left, bottom, width, height, PANEL)
         arcade.draw_lbwh_rectangle_outline(left, bottom, width, height, BORDER, 1)
-        arcade.draw_line(left, bottom + height - 58 * scale, left + width, bottom + height - 58 * scale, BORDER, 1)
-        arcade.draw_text("Buy", left + pad, bottom + height - 36 * scale, TEXT, self._font(22), bold=True, anchor_y="center")
-        arcade.draw_text("Pick a side", left + width - pad, bottom + height - 36 * scale, MUTED, self._font(13), anchor_x="right", anchor_y="center")
+        arcade.draw_line(left, bottom + height - 54, left + width, bottom + height - 54, BORDER, 1)
+        arcade.draw_text("Buy", left + 26, bottom + height - 33, TEXT, 18, bold=True, anchor_y="center")
+        arcade.draw_text("One-tap prediction", left + width - 26, bottom + height - 33, MUTED, 12, anchor_x="right", anchor_y="center")
 
         up_price = self._contract_price("Up")
         down_price = self._contract_price("Down")
-        side_gap = 14 * scale
-        side_width = (width - pad * 2 - side_gap) / 2
-        side_height = 58 * scale
-        side_bottom = bottom + height - 150 * scale
-        self._draw_side_button("side_up", "Up", up_price, left + pad, side_bottom, side_width, side_height)
-        self._draw_side_button("side_down", "Down", down_price, left + pad + side_width + side_gap, side_bottom, side_width, side_height)
+        self._draw_side_button("side_up", "Up", up_price, left + 26, bottom + height - 140, 142, 58)
+        self._draw_side_button("side_down", "Down", down_price, left + 184, bottom + height - 140, 142, 58)
 
-        arcade.draw_text("Amount", left + pad, bottom + height - 198 * scale, MUTED, self._font(14), bold=True)
-        amount_gap = 16 * scale
-        amount_width = (width - pad * 2 - amount_gap * 2) / 3
-        amount_height = 64 * scale
+        arcade.draw_text("Order Amount", left + 26, bottom + height - 190, MUTED, 12, bold=True)
         for index, amount in enumerate((5, 25, 100)):
-            x = left + pad + index * (amount_width + amount_gap)
-            self._draw_amount_button(amount, x, bottom + height - 290 * scale, amount_width, amount_height)
+            x = left + 26 + index * 110
+            self._draw_amount_button(amount, x, bottom + height - 282)
 
-        summary_top = bottom + height - 340 * scale
-        arcade.draw_line(left + pad, summary_top + 18 * scale, left + width - pad, summary_top + 18 * scale, BORDER, 1)
-        self._draw_position_summary(left + pad, summary_top, width - pad * 2)
+        arcade.draw_line(left + 26, bottom + height - 320, left + width - 26, bottom + height - 320, BORDER, 1)
+        self._draw_position_summary(left + 26, bottom + height - 338, width - 52)
 
         buy_key = "new_market" if self.market.settled else "buy"
-        buy_zone = ClickZone(buy_key, left + pad, bottom + pad, width - pad * 2, 58 * scale)
+        buy_zone = ClickZone(buy_key, left + 26, bottom + 26, width - 52, 56)
         self.click_zones.append(buy_zone)
         buy_disabled = self.position is not None and not self.market.settled
         buy_color = PANEL_SOFT if buy_disabled else GREEN_DARK
@@ -1174,7 +948,7 @@ class BitcoinPredictionGame(arcade.Window):
             buy_color = BLUE if self.market.settled else GREEN
         arcade.draw_lbwh_rectangle_filled(buy_zone.left, buy_zone.bottom, buy_zone.width, buy_zone.height, buy_color)
         button_text = "New Market" if self.market.settled else "Buy & Start"
-        arcade.draw_text(button_text, buy_zone.center_x, buy_zone.center_y + 2 * scale, TEXT if not buy_disabled else MUTED, self._font(22), bold=True, anchor_x="center", anchor_y="center")
+        arcade.draw_text(button_text, buy_zone.center_x, buy_zone.center_y + 2, TEXT if not buy_disabled else MUTED, 18, bold=True, anchor_x="center", anchor_y="center")
 
     def _draw_side_button(self, key: str, label: str, price: int, left: float, bottom: float, width: float, height: float) -> None:
         selected = self.selected_side == label
@@ -1194,12 +968,11 @@ class BitcoinPredictionGame(arcade.Window):
         arcade.draw_lbwh_rectangle_filled(left, bottom, width, height, color)
         arcade.draw_lbwh_rectangle_outline(left, bottom, width, height, GREEN if label == "Up" and selected else BORDER, 1)
         text_color = MUTED if disabled and not selected else TEXT
-        arcade.draw_text(f"{label} {price}c", left + width / 2, bottom + height / 2 + 2 * self._scale(), text_color, self._font(17), bold=True, anchor_x="center", anchor_y="center")
+        arcade.draw_text(f"{label} {price}c", left + width / 2, bottom + height / 2 + 2, text_color, 15, bold=True, anchor_x="center", anchor_y="center")
 
-    def _draw_amount_button(self, amount: int, left: float, bottom: float, width: float, height: float) -> None:
+    def _draw_amount_button(self, amount: int, left: float, bottom: float) -> None:
         key = f"amount_{amount}"
-        scale = self._scale()
-        zone = ClickZone(key, left, bottom, width, height)
+        zone = ClickZone(key, left, bottom, 86, 66)
         self.click_zones.append(zone)
         selected = self.selected_amount == amount
         disabled = self.position is not None or self.market.settled
@@ -1209,40 +982,32 @@ class BitcoinPredictionGame(arcade.Window):
             color = (41, 52, 65)
         arcade.draw_lbwh_rectangle_filled(zone.left, zone.bottom, zone.width, zone.height, color)
         arcade.draw_lbwh_rectangle_outline(zone.left, zone.bottom, zone.width, zone.height, BLUE if selected else BORDER, 1)
-        arcade.draw_text(f"${amount}", zone.center_x, zone.center_y + 10 * scale, TEXT if not disabled or selected else MUTED, self._font(22), bold=True, anchor_x="center", anchor_y="center")
-        arcade.draw_text("bet", zone.center_x, zone.center_y - 18 * scale, MUTED, self._font(12), anchor_x="center", anchor_y="center")
+        arcade.draw_text(f"${amount}", zone.center_x, zone.center_y + 9, TEXT if not disabled or selected else MUTED, 20, bold=True, anchor_x="center", anchor_y="center")
+        arcade.draw_text("stake", zone.center_x, zone.center_y - 17, MUTED, 10, anchor_x="center", anchor_y="center")
 
     def _draw_position_summary(self, left: float, top: float, width: float) -> None:
-<<<<<<< HEAD
         arcade.draw_text(f"{self._player_call_name()}'s Balance", left, top, MUTED, 12, bold=True)
         arcade.draw_text(f"${self.balance:,.2f}", left, top - 28, TEXT, 22, bold=True)
         arcade.draw_text(self.status_message, left, top - 74, MUTED, 11, width=int(width), multiline=True)
-=======
-        scale = self._scale()
-        arcade.draw_text("Balance", left, top, MUTED, self._font(14), bold=True)
-        arcade.draw_text(f"${self.balance:,.2f}", left, top - 36 * scale, TEXT, self._font(26), bold=True)
-        arcade.draw_text(self.status_message, left, top - 88 * scale, MUTED, self._font(13), width=int(width), multiline=True)
->>>>>>> 94b6a98 (Mon, May 11, 2026, 9:30 AM -07:00)
 
         if self.position is None:
             price = self._contract_price(self.selected_side)
             shares = self.selected_amount / (price / 100)
-            arcade.draw_text("Before Buy", left, top - 150 * scale, MUTED, self._font(14), bold=True)
-            arcade.draw_text(f"{self.selected_side}: {price}c each", left, top - 182 * scale, TEXT, self._font(18), bold=True)
-            arcade.draw_text(f"Pays up to ${shares:,.2f}", left, top - 212 * scale, MUTED, self._font(13))
+            arcade.draw_text("Preview", left, top - 120, MUTED, 12, bold=True)
+            arcade.draw_text(f"{self.selected_side}: {price}c per share", left, top - 146, TEXT, 15, bold=True)
+            arcade.draw_text(f"Buy starts timer | Max payout ${shares:,.2f}", left, top - 168, MUTED, 11)
             return
 
         result = self.position.resolved_result or "Open"
         live_price = self._contract_price(self.position.side)
         current_value = self.position.shares * (live_price / 100)
-        arcade.draw_text("Your Pick", left, top - 150 * scale, MUTED, self._font(14), bold=True)
-        arcade.draw_text(f"{self.position.side}: ${self.position.amount} at {self.position.entry_price_cents}c", left, top - 182 * scale, TEXT, self._font(18), bold=True)
-        arcade.draw_text(f"Now: {live_price}c | Value ${current_value:,.2f}", left, top - 212 * scale, MUTED, self._font(13))
+        arcade.draw_text("Current Position", left, top - 120, MUTED, 12, bold=True)
+        arcade.draw_text(f"{self.position.side}: ${self.position.amount} at {self.position.entry_price_cents}c", left, top - 146, TEXT, 15, bold=True)
+        arcade.draw_text(f"Live share price: {live_price}c | Value ${current_value:,.2f}", left, top - 168, MUTED, 11)
         result_color = GREEN if result == "Won" else RED if result == "Lost" else YELLOW
-        arcade.draw_text(f"Status: {result}", left, top - 242 * scale, result_color, self._font(13), bold=True)
+        arcade.draw_text(f"Status: {result}", left, top - 190, result_color, 11, bold=True)
 
     def _draw_news_cards(self) -> None:
-<<<<<<< HEAD
         left = 70
         bottom = 46
         total_width = 900
@@ -1255,26 +1020,12 @@ class BitcoinPredictionGame(arcade.Window):
         for index, card in enumerate(self.news_cards):
             card_left = left + index * (card_width + gap)
             self._draw_news_card(card, card_left, bottom, card_width, card_height)
-=======
-        layout = self._layout()
-        scale = layout["scale"]
-        left = layout["left"]
-        bottom = layout["article_bottom"]
-        card_width = layout["left_width"]
-        card_height = layout["article_height"]
-
-        arcade.draw_text("Bitcoin article", left, bottom + card_height + 20 * scale, TEXT, self._font(20), bold=True)
-        arcade.draw_text("Read first. No hint is shown.", left + 178 * scale, bottom + card_height + 23 * scale, MUTED, self._font(14))
-        self._draw_news_card(self.news_card, left, bottom, card_width, card_height)
->>>>>>> 94b6a98 (Mon, May 11, 2026, 9:30 AM -07:00)
 
     def _draw_news_card(self, card: NewsCard, left: float, bottom: float, width: float, height: float) -> None:
-        scale = self._scale()
         arcade.draw_lbwh_rectangle_filled(left, bottom, width, height, PANEL)
         arcade.draw_lbwh_rectangle_outline(left, bottom, width, height, BORDER, 1)
-        arcade.draw_lbwh_rectangle_filled(left, bottom + height - 7 * scale, width, 7 * scale, BLUE)
+        arcade.draw_lbwh_rectangle_filled(left, bottom + height - 8, width, 8, BLUE)
 
-<<<<<<< HEAD
         inset = 16
         content_width = int(width - inset * 2)
 
@@ -1308,20 +1059,6 @@ class BitcoinPredictionGame(arcade.Window):
             width=content_width,
             multiline=True,
         )
-=======
-        arcade.draw_text(card.source, left + 24 * scale, bottom + height - 40 * scale, MUTED, self._font(13), bold=True)
-        arcade.draw_text(
-            f"Trust {round(card.reliability * 100)}%",
-            left + width - 24 * scale,
-            bottom + height - 40 * scale,
-            MUTED,
-            self._font(13),
-            bold=True,
-            anchor_x="right",
-        )
-        arcade.draw_text(card.analysis_label, left + 24 * scale, bottom + height - 76 * scale, BLUE, self._font(16), bold=True)
-        arcade.draw_text(card.headline, left + 24 * scale, bottom + 34 * scale, TEXT, self._font(25), bold=True, width=int(width - 48 * scale), multiline=True)
->>>>>>> 94b6a98 (Mon, May 11, 2026, 9:30 AM -07:00)
 
     def _draw_transition_overlay(self) -> None:
         if self.market_transition >= 1:
@@ -1333,31 +1070,25 @@ class BitcoinPredictionGame(arcade.Window):
         arcade.draw_lbwh_rectangle_filled(
             0,
             0,
-            self.width,
-            self.height,
+            WINDOW_WIDTH,
+            WINDOW_HEIGHT,
             (14, 18, 23, alpha),
         )
         arcade.draw_text(
             "New 15s market",
-            self.width / 2,
-            self.height / 2 + 12 * self._scale(),
+            WINDOW_WIDTH / 2,
+            WINDOW_HEIGHT / 2 + 12,
             (239, 243, 248, text_alpha),
-            self._font(20),
+            24,
             bold=True,
             anchor_x="center",
         )
         arcade.draw_text(
-<<<<<<< HEAD
             "Read the articles, choose a side, then start the round",
             WINDOW_WIDTH / 2,
             WINDOW_HEIGHT / 2 - 18,
-=======
-            "Read first. Pick a side. Start the round.",
-            self.width / 2,
-            self.height / 2 - 18 * self._scale(),
->>>>>>> 94b6a98 (Mon, May 11, 2026, 9:30 AM -07:00)
             (141, 151, 166, text_alpha),
-            self._font(12),
+            13,
             anchor_x="center",
         )
 
