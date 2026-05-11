@@ -105,6 +105,19 @@ One person is assigned as the **game.py owner for the day**:
 - **Everyone else** edits only their own `game-yourname.py` file
 - Always keep your personal file up to date in git
 
+## PolyArcade file split
+
+The Bitcoin market game is now split so teammates can work on separate files:
+
+- `game-bitcoin-polymarket.py`: launcher only
+- `polyarcade/window.py`: Arcade window, clicks, and drawing flow
+- `polyarcade/market_logic.py`: price movement and odds math
+- `polyarcade/content.py`: article text and tutorial copy
+- `polyarcade/constants.py`: tuning values, colors, and shared config
+- `polyarcade/models.py`: shared dataclasses
+
+This keeps market logic, copy, and UI work in separate files so two people do not need to edit the same module as often.
+
 ### If there's a merge conflict (multiple people edited the same file)
 
 1. Git will tell you there's a conflict

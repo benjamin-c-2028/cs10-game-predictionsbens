@@ -18,6 +18,18 @@
 - Every other student edits only their own `game-yourname.py`.
 - Every student creates their own file first (example: `game-sally.py`).
 
+## PolyArcade ownership split
+
+For the Bitcoin market game, use these ownership lines:
+
+- `polyarcade/window.py`: UI layout, clicks, onboarding, dashboard
+- `polyarcade/market_logic.py`: BTC movement, contract prices, resolve behavior
+- `polyarcade/content.py`: article headlines, tutorial words, demo copy
+- `polyarcade/constants.py`: colors, spacing, timing, balance defaults
+- `polyarcade/models.py`: shared data shapes used across files
+
+If two people need the same file, agree on one owner for that file before editing.
+
 ## Team check
 
 After integration, run:
