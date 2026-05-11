@@ -23,6 +23,7 @@ PRICE_TICK_SECONDS = 1 / 30
 PRICE_HISTORY_LIMIT = int(MARKET_DURATION_SECONDS / PRICE_TICK_SECONDS) + 90
 MARKET_TRANSITION_SPEED = 3.4
 MAX_FULL_NAME_CHARS = 32
+MAX_AMOUNT_INPUT_CHARS = 6
 MAX_FRAME_SECONDS = 1 / 20
 ARTICLE_FORCE = 8.0
 ARTICLE_END_PULL = 0.22
@@ -263,7 +264,9 @@ class BitcoinPredictionGame(arcade.Window):
         self.balance = STARTING_BALANCE
         self.demo_balance = STARTING_BALANCE
         self.selected_side = "Up"
-        self.selected_amount = DEFAULT_ORDER_AMOUNT
+        self.selected_amount = 0
+        self.amount_input_text = ""
+        self.amount_input_active = False
         self.position: Position | None = None
         self.trade_history: list[TradeRecord] = []
         self.dashboard_active = False
@@ -289,6 +292,8 @@ class BitcoinPredictionGame(arcade.Window):
         if demo_mode:
             self.selected_side = ""
             self.selected_amount = 0
+            self.amount_input_text = ""
+            self.amount_input_active = False
             self.news_cards = list(DEMO_NEWS_CARDS)
             self.demo_round_complete = False
             self.demo_side_picked = False
@@ -296,7 +301,9 @@ class BitcoinPredictionGame(arcade.Window):
             self.demo_read_articles = set()
         else:
             self.selected_side = "Up"
-            self.selected_amount = DEFAULT_ORDER_AMOUNT
+            self.selected_amount = 0
+            self.amount_input_text = ""
+            self.amount_input_active = False
             self.news_cards = self._choose_news_cards()
 
         starting_price = round(random.uniform(79_750, 80_350), 2)
@@ -374,6 +381,11 @@ class BitcoinPredictionGame(arcade.Window):
     def _combined_news_bias(self) -> float:
         return sum(card.price_bias for card in self.news_cards) / len(self.news_cards)
 
+    def _sync_selected_amount_from_text(self) -> None:
+        self.selected_amount = int(self.amount_input_text) if self.amount_input_text else 0
+        if self.demo_round_active:
+            self.demo_amount_picked = self.selected_amount > 0
+
     def _demo_articles_done(self) -> bool:
         return len(self.demo_read_articles) >= len(self.news_cards)
 
@@ -392,7 +404,7 @@ class BitcoinPredictionGame(arcade.Window):
         elif not self.demo_side_picked:
             self.status_message = f"{call_name}, demo step 2: pick Up or Down."
         elif not self.demo_amount_picked:
-            self.status_message = f"{call_name}, demo step 3: pick a demo stake."
+            self.status_message = f"{call_name}, demo step 3: type a demo amount."
         else:
             self.status_message = (
                 f"{call_name}, demo step 4: click Buy & Start. "
