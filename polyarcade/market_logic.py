@@ -51,7 +51,7 @@ def build_market(news_cards: list[NewsCard]) -> MarketState:
     starting_price = round(random.uniform(79_750, 80_350), 2)
     history = make_opening_history(starting_price)
     price_bias = combined_news_bias(news_cards)
-    average_reliability = sum(card.reliability for card in news_cards) / (100 * len(news_cards))
+    average_reliability = sum(max(81, card.reliability) for card in news_cards) / (100 * len(news_cards))
     bias_strength = min(1.0, abs(price_bias))
     resolve_direction = 1 if price_bias >= 0 else -1
     resolve_move = (

@@ -68,7 +68,7 @@ class BitcoinPredictionGame(arcade.Window):
         self.tutorial_active = False
         self.onboarding_name = ""
         self.onboarding_name_active = True
-        self.onboarding_message = "Type your full name to create a practice identity."
+        self.onboarding_message = "Type your first name to create a practice identity."
         self.player_full_name = ""
         self.balance = STARTING_BALANCE
         self.demo_balance = STARTING_BALANCE
@@ -476,8 +476,10 @@ class BitcoinPredictionGame(arcade.Window):
 
     def on_text(self, text: str) -> None:
         if self.onboarding_active and self.onboarding_name_active:
-            allowed = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ -'."
+            allowed = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ-'."
             for character in text:
+                if character.isspace():
+                    break
                 if character in allowed and len(self.onboarding_name) < MAX_FULL_NAME_CHARS:
                     self.onboarding_name += character
             self.onboarding_message = "Click Start Practice Tutorial when your name is ready."
@@ -498,7 +500,7 @@ class BitcoinPredictionGame(arcade.Window):
         if self.onboarding_active:
             if symbol == arcade.key.BACKSPACE:
                 self.onboarding_name = self.onboarding_name[:-1]
-                self.onboarding_message = "Type your full name to create a practice identity."
+                self.onboarding_message = "Type your first name to create a practice identity."
             elif symbol in (arcade.key.ENTER, arcade.key.RETURN):
                 self.onboarding_message = "Use the Start Practice Tutorial button to continue."
             elif symbol == arcade.key.TAB:
@@ -517,19 +519,19 @@ class BitcoinPredictionGame(arcade.Window):
     def _handle_onboarding_click(self, clicked_key: str) -> None:
         if clicked_key == "onboard_name":
             self.onboarding_name_active = True
-            self.onboarding_message = "Type your full name, like Benjamin Silverman."
+            self.onboarding_message = "Type your first name, like John."
         elif clicked_key == "onboard_start":
             self._finish_onboarding()
 
     def _finish_onboarding(self) -> None:
-        full_name = " ".join(self.onboarding_name.strip().split())
-        if not full_name:
+        first_name = self.onboarding_name.strip().split()[0] if self.onboarding_name.strip() else ""
+        if not first_name:
             self.onboarding_name_active = True
-            self.onboarding_message = "Enter your full name first, like Benjamin Silverman."
+            self.onboarding_message = "Enter your first name first, like John."
             return
 
-        self.player_full_name = full_name
-        self.onboarding_name = full_name
+        self.player_full_name = first_name
+        self.onboarding_name = first_name
         self.onboarding_name_active = False
         self.onboarding_active = False
         self.tutorial_active = True
@@ -538,7 +540,7 @@ class BitcoinPredictionGame(arcade.Window):
     def _player_call_name(self) -> str:
         if not self.player_full_name:
             return "Trader"
-        return self.player_full_name.split()[0]
+        return self.player_full_name
 
     def _pulse_fraction(self, speed: float = TEXTBOX_PULSE_SPEED) -> float:
         return 0.5 + 0.5 * math.sin(self.cursor_anim_time * speed)
@@ -556,18 +558,29 @@ class BitcoinPredictionGame(arcade.Window):
         text_left: float,
         typed_text: str,
         font_size: int = 16,
+        bold: bool = True,
     ) -> None:
         if not self._is_caret_visible():
             return
 
+        measured_text = arcade.Text(
+            typed_text,
+            0,
+            0,
+            TEXT,
+            font_size=font_size,
+            bold=bold,
+        )
         approx_char_width = max(7.0, font_size * 0.56)
         max_text_width = max(0.0, zone.width - (text_left - zone.left) - 18)
-        text_width = min(len(typed_text) * approx_char_width, max_text_width)
+        measured_width = measured_text.content_width if typed_text else 0.0
+        raw_text_width = measured_width if measured_width > 0 else len(typed_text) * approx_char_width
+        text_width = min(raw_text_width, max_text_width)
         caret_x = min(text_left + text_width + 2.0, zone.right - 14.0)
         caret_bottom = zone.bottom + 11.0
         caret_top = zone.top - 11.0
-        arcade.draw_line(caret_x, caret_bottom, caret_x, caret_top, ORANGE, 3)
-        arcade.draw_line(caret_x + 2.0, caret_bottom, caret_x + 2.0, caret_top, (*ORANGE, 140), 1)
+        arcade.draw_line(caret_x, caret_bottom, caret_x, caret_top, WHITE, 3)
+        arcade.draw_line(caret_x + 2.0, caret_bottom, caret_x + 2.0, caret_top, (*WHITE, 140), 1)
 
     def _draw_onboarding(self) -> None:
         arcade.draw_lbwh_rectangle_filled(0, 0, WINDOW_WIDTH, WINDOW_HEIGHT, BACKGROUND)
@@ -603,22 +616,24 @@ class BitcoinPredictionGame(arcade.Window):
         )
 
         steps = [
-            ("1", "Enter your full name", "Use your real full name for the practice identity."),
+            ("1", "Enter your first name", "Use your first name for the practice identity."),
             ("2", "Click Start Practice Tutorial", "This opens the guided demo before the real market starts."),
             ("3", "Play the demo round", "The first round uses demo cash and walks you through the clicks."),
         ]
         for index, (number, title, detail) in enumerate(steps):
             y = panel_bottom + 370 - index * 92
-            arcade.draw_circle_filled(panel_left + 70, y + 8, 22, PANEL_SOFT)
-            arcade.draw_circle_outline(panel_left + 70, y + 8, 22, BLUE, 2)
-            arcade.draw_text(number, panel_left + 70, y + 1, TEXT, 15, bold=True, anchor_x="center", anchor_y="center")
+            circle_x = panel_left + 70
+            circle_y = y + 8
+            arcade.draw_circle_filled(circle_x, circle_y, 22, PANEL_SOFT)
+            arcade.draw_circle_outline(circle_x, circle_y, 22, BLUE, 2)
+            arcade.draw_text(number, circle_x, circle_y, TEXT, 15, bold=True, anchor_x="center", anchor_y="center")
             arcade.draw_text(title, panel_left + 110, y + 18, TEXT, 18, bold=True)
             arcade.draw_text(detail, panel_left + 110, y - 10, MUTED, 13, width=390, multiline=True)
 
         form_left = panel_left + 570
         form_top = panel_bottom + 372
         arcade.draw_text("Create Practice Identity", form_left, form_top + 74, TEXT, 21, bold=True)
-        arcade.draw_text("Full Name", form_left, form_top + 38, MUTED, 12, bold=True)
+        arcade.draw_text("First Name", form_left, form_top + 38, MUTED, 12, bold=True)
 
         name_zone = ClickZone("onboard_name", form_left, form_top - 32, 352, 58)
         self.click_zones.append(name_zone)
@@ -657,7 +672,7 @@ class BitcoinPredictionGame(arcade.Window):
             name_display = self.onboarding_name
             name_color = TEXT
         else:
-            name_display = "Example: John Doe"
+            name_display = "Example: John"
             name_color = MUTED_DARK
         arcade.draw_text(name_display, text_left, text_y, name_color, 16, bold=True)
         if name_is_active:
@@ -674,7 +689,7 @@ class BitcoinPredictionGame(arcade.Window):
             )
 
         arcade.draw_text(
-            "No password is needed. This tutorial only stores your name in memory for this run.",
+            "No password is needed. This tutorial only stores your first name in memory for this run.",
             form_left,
             form_top - 78,
             MUTED,
@@ -766,18 +781,12 @@ class BitcoinPredictionGame(arcade.Window):
             arcade.draw_lbwh_rectangle_outline(zone.left, zone.bottom, zone.width, zone.height, BORDER, 1)
             arcade.draw_text(label, zone.center_x, zone.center_y + 1, TEXT, 15, bold=True, anchor_x="center", anchor_y="center")
 
-        targets = [
-            (TUTORIAL_CLICK_TARGETS[0], up_button.center_x, up_button.center_y),
-            (TUTORIAL_CLICK_TARGETS[1], amount_button.center_x, amount_button.center_y),
-            (TUTORIAL_CLICK_TARGETS[2], buy_button.center_x, buy_button.center_y),
-        ]
-        for index, (target, button_x, button_y) in enumerate(targets):
+        for index, target in enumerate(TUTORIAL_CLICK_TARGETS):
             text_x = guide_left + 32
             text_y = guide_bottom + 302 - index * 100
             arcade.draw_text(target.button_label, text_x, text_y + 30, BLUE, 12, bold=True)
             arcade.draw_text(target.title, text_x, text_y + 7, TEXT, 16, bold=True)
             arcade.draw_text(target.detail, text_x, text_y - 18, MUTED, 12, width=200, multiline=True)
-            self._draw_arrow(text_x + 210, text_y + 8, button_x - 12, button_y, BLUE)
 
         continue_zone = ClickZone("tutorial_continue", panel_left + panel_width - 332, panel_bottom + 28, 290, 54)
         self.click_zones.append(continue_zone)
@@ -786,25 +795,10 @@ class BitcoinPredictionGame(arcade.Window):
         arcade.draw_lbwh_rectangle_outline(continue_zone.left, continue_zone.bottom, continue_zone.width, continue_zone.height, BORDER, 1)
         arcade.draw_text("Start Guided Demo", continue_zone.center_x, continue_zone.center_y + 1, TEXT, 17, bold=True, anchor_x="center", anchor_y="center")
 
-    def _draw_arrow(self, start_x: float, start_y: float, end_x: float, end_y: float, color: tuple[int, int, int]) -> None:
-        arcade.draw_line(start_x, start_y, end_x, end_y, color, 3)
-        angle = math.atan2(end_y - start_y, end_x - start_x)
-        size = 11
-        left_angle = angle + math.pi * 0.78
-        right_angle = angle - math.pi * 0.78
-        left = (end_x + math.cos(left_angle) * size, end_y + math.sin(left_angle) * size)
-        right = (end_x + math.cos(right_angle) * size, end_y + math.sin(right_angle) * size)
-        arcade.draw_triangle_filled(end_x, end_y, left[0], left[1], right[0], right[1], color)
-
     def _draw_game_cursor(self) -> None:
         is_text_target = self.hovered_key in CURSOR_TEXT_KEYS
         is_click_target = self.hovered_key is not None
-        if is_text_target:
-            cursor_color = ORANGE
-        elif is_click_target:
-            cursor_color = BLUE
-        else:
-            cursor_color = MUTED
+        cursor_color = WHITE
 
         pulse = 1 + 0.05 * math.sin(self.cursor_anim_time * 9)
         outer_radius = (10 if is_click_target else 8) * pulse + self.cursor_click_flash * 2.8
@@ -1105,7 +1099,7 @@ class BitcoinPredictionGame(arcade.Window):
         self.click_zones.append(zone)
 
         if selected and label == "Up":
-            color = GREEN
+            color = GREEN_DARK
         elif selected:
             color = RED_DARK
         elif self.hovered_key == key and not disabled:
@@ -1114,7 +1108,8 @@ class BitcoinPredictionGame(arcade.Window):
             color = PANEL_ALT
 
         arcade.draw_lbwh_rectangle_filled(left, bottom, width, height, color)
-        arcade.draw_lbwh_rectangle_outline(left, bottom, width, height, GREEN if label == "Up" and selected else BORDER, 1)
+        selected_outline = GREEN if label == "Up" else RED
+        arcade.draw_lbwh_rectangle_outline(left, bottom, width, height, selected_outline if selected else BORDER, 1)
         text_color = MUTED if disabled and not selected else TEXT
         arcade.draw_text(f"{label} {price}c", left + width / 2, bottom + height / 2 + 2, text_color, 15, bold=True, anchor_x="center", anchor_y="center")
 
@@ -1177,7 +1172,7 @@ class BitcoinPredictionGame(arcade.Window):
         text_left = zone.left + 18
         arcade.draw_text(amount_text, text_left, zone.center_y + 9, amount_color, 20, bold=True, anchor_y="center")
         if active:
-            self._draw_textbox_caret(zone, text_left, self.amount_input_text, font_size=20)
+            self._draw_textbox_caret(zone, text_left, amount_text, font_size=20)
             typing_hint_color = ORANGE if self._is_caret_visible() else MUTED
             arcade.draw_text(
                 "typing...",
@@ -1276,7 +1271,7 @@ class BitcoinPredictionGame(arcade.Window):
 
         arcade.draw_text(card.source, left + inset, bottom + height - 31, MUTED, 9, bold=True)
         arcade.draw_text(
-            f"Reliability {card.reliability}%",
+            f"Reliability {max(81, card.reliability)}%",
             left + width - inset,
             bottom + height - 31,
             MUTED,
