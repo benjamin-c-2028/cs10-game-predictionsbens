@@ -20,17 +20,26 @@ STARTING_BALANCE = 1000
 DEFAULT_ORDER_AMOUNT = 25
 PRICE_STEP_DOLLARS = 5
 PRICE_TICK_SECONDS = 1 / 30
-PRICE_HISTORY_LIMIT = 180
+PRICE_HISTORY_LIMIT = int(MARKET_DURATION_SECONDS / PRICE_TICK_SECONDS) + 90
 MARKET_TRANSITION_SPEED = 3.4
 MAX_FULL_NAME_CHARS = 32
 MAX_FRAME_SECONDS = 1 / 20
-ARTICLE_FORCE = 4.0
-ARTICLE_END_PULL = 0.15
-PRICE_GRAVITY = 0.018
-PRICE_WAVE_FORCE = 1.2
-PRICE_NOISE = 12.0
-VELOCITY_DAMPING = 1.25
-MAX_PRICE_VELOCITY = 58.0
+ARTICLE_FORCE = 8.0
+ARTICLE_END_PULL = 0.22
+PRICE_GRAVITY = 0.01
+PRICE_WAVE_FORCE = 9.5
+SECONDARY_WAVE_FORCE = 5.8
+PRICE_NOISE = 26.0
+VELOCITY_DAMPING = 1.05
+MAX_PRICE_VELOCITY = 210.0
+RESOLVE_PULL = 0.03
+ENDGAME_PULL = 0.12
+RESOLVE_MOVE_BASE = 70.0
+RESOLVE_MOVE_SCALE = 165.0
+RELIABILITY_MOVE_SCALE = 75.0
+ROUND_VOLATILITY_BASE = 1.15
+ROUND_VOLATILITY_BIAS = 0.75
+ROUND_VOLATILITY_RELIABILITY = 0.35
 
 BACKGROUND = (8, 12, 17)
 HEADER = (12, 18, 25)
@@ -69,6 +78,10 @@ class MarketState:
     active: bool
     settled: bool
     price_bias: float
+    resolve_price: float
+    volatility: float
+    swing_phase: float
+    swing_cycles: float
 
 
 @dataclass
@@ -250,6 +263,24 @@ class BitcoinPredictionGame(arcade.Window):
         starting_price = round(random.uniform(79_750, 80_350), 2)
         history = self._make_opening_history(starting_price)
         price_bias = self._combined_news_bias()
+        average_reliability = sum(card.reliability for card in self.news_cards) / (100 * len(self.news_cards))
+        bias_strength = min(1.0, abs(price_bias))
+        resolve_direction = 1 if price_bias >= 0 else -1
+        resolve_move = (
+            RESOLVE_MOVE_BASE
+            + bias_strength * RESOLVE_MOVE_SCALE
+            + average_reliability * RELIABILITY_MOVE_SCALE
+            + random.uniform(20.0, 65.0)
+        )
+        resolve_move = round(resolve_move / PRICE_STEP_DOLLARS) * PRICE_STEP_DOLLARS
+        resolve_price = round(max(1000, starting_price + resolve_direction * resolve_move), 2)
+        volatility = (
+            ROUND_VOLATILITY_BASE
+            + bias_strength * ROUND_VOLATILITY_BIAS
+            + average_reliability * ROUND_VOLATILITY_RELIABILITY
+        )
+        swing_phase = random.uniform(0.0, math.tau)
+        swing_cycles = random.uniform(1.8, 3.1)
         call_name = self._player_call_name()
         self.status_message = f"{call_name}, read the articles. The market starts only after you buy a position."
 
@@ -261,13 +292,17 @@ class BitcoinPredictionGame(arcade.Window):
             active=False,
             settled=False,
             price_bias=price_bias,
+            resolve_price=resolve_price,
+            volatility=volatility,
+            swing_phase=swing_phase,
+            swing_cycles=swing_cycles,
         )
 
     def _choose_news_cards(self) -> list[NewsCard]:
         cards = random.sample(ALL_NEWS, 3)
         for _ in range(12):
             average_bias = sum(card.price_bias for card in cards) / len(cards)
-            if abs(average_bias) >= 0.18:
+            if abs(average_bias) >= 0.22:
                 return cards
             cards = random.sample(ALL_NEWS, 3)
         return cards
@@ -329,23 +364,41 @@ class BitcoinPredictionGame(arcade.Window):
     def _advance_price(self, delta_time: float) -> None:
         progress = self.market.elapsed_seconds / MARKET_DURATION_SECONDS
         previous = self.market.current_price
-        article_force = self.market.price_bias * ARTICLE_FORCE
-        closing_pull = self.market.price_bias * ARTICLE_FORCE * ARTICLE_END_PULL * progress
-        gravity_force = (self.market.target_price - previous) * PRICE_GRAVITY
-        wave_force = math.sin(progress * math.tau * 1.8) * PRICE_WAVE_FORCE
-        random_force = random.uniform(-1.0, 1.0) * PRICE_NOISE * math.sqrt(max(delta_time, 0.001))
+        distance_to_resolve = self.market.resolve_price - previous
+        anchor_price = self.market.target_price + (self.market.resolve_price - self.market.target_price) * 0.35
+        article_force = math.copysign(
+            ARTICLE_FORCE * (0.8 + self.market.volatility * 0.4),
+            self.market.price_bias or 1.0,
+        )
+        closing_pull = distance_to_resolve * (RESOLVE_PULL + progress * ENDGAME_PULL)
+        gravity_force = (anchor_price - previous) * PRICE_GRAVITY
+        wave_force = math.sin(progress * math.tau * self.market.swing_cycles + self.market.swing_phase)
+        wave_force *= PRICE_WAVE_FORCE * self.market.volatility
+        cross_wave = math.sin(
+            progress * math.tau * (self.market.swing_cycles * 2.15) - self.market.swing_phase * 0.55
+        )
+        cross_wave *= SECONDARY_WAVE_FORCE * self.market.volatility
+        random_force = random.uniform(-1.0, 1.0) * PRICE_NOISE * self.market.volatility
+        random_force *= math.sqrt(max(delta_time, 0.001))
         damping = self.price_velocity * VELOCITY_DAMPING
 
         self.price_velocity += (
-            article_force + closing_pull + gravity_force + wave_force - damping
+            article_force + closing_pull + gravity_force + wave_force + cross_wave - damping
         ) * delta_time + random_force
         self.price_velocity = max(-MAX_PRICE_VELOCITY, min(MAX_PRICE_VELOCITY, self.price_velocity))
 
         new_price = previous + self.price_velocity * delta_time
+        if progress > 0.82:
+            settle_blend = (progress - 0.82) / 0.18
+            new_price += distance_to_resolve * settle_blend * 0.25
         self.market.current_price = round(max(1000, new_price), 2)
 
     def _settle_market(self) -> None:
         self.market.active = False
+        self.market.current_price = self.market.resolve_price
+        self.market.history.append(self.market.current_price)
+        if len(self.market.history) > PRICE_HISTORY_LIMIT:
+            self.market.history.pop(0)
         self.market.settled = True
 
         winning_side = "Up" if self.market.current_price >= self.market.target_price else "Down"
@@ -416,7 +469,8 @@ class BitcoinPredictionGame(arcade.Window):
     def _contract_price(self, side: str) -> int:
         gap = self.market.current_price - self.market.target_price
         progress = self.market.elapsed_seconds / MARKET_DURATION_SECONDS
-        price_scale = max(35.0, 95.0 * (1 - progress * 0.55))
+        expected_move = max(55.0, abs(self.market.resolve_price - self.market.target_price) * 0.55)
+        price_scale = max(28.0, expected_move * (1 - progress * 0.4))
         score = gap / price_scale
         score = max(-6.0, min(6.0, score))
         up_probability = 1 / (1 + math.exp(-score))
