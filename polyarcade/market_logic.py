@@ -7,24 +7,16 @@ import math
 import random
 
 from .constants import (
-    ARTICLE_FORCE,
-    PRICE_HISTORY_LIMIT,
-    ENDGAME_PULL,
     MARKET_DURATION_SECONDS,
     MAX_PRICE_VELOCITY,
-    PRICE_GRAVITY,
-    PRICE_NOISE,
+    PRICE_HISTORY_LIMIT,
     PRICE_STEP_DOLLARS,
-    PRICE_WAVE_FORCE,
     RELIABILITY_MOVE_SCALE,
     RESOLVE_MOVE_BASE,
     RESOLVE_MOVE_SCALE,
-    RESOLVE_PULL,
     ROUND_VOLATILITY_BASE,
     ROUND_VOLATILITY_BIAS,
     ROUND_VOLATILITY_RELIABILITY,
-    SECONDARY_WAVE_FORCE,
-    VELOCITY_DAMPING,
 )
 from .models import MarketState, NewsCard
 
@@ -58,8 +50,9 @@ def build_market(news_cards: list[NewsCard]) -> MarketState:
         RESOLVE_MOVE_BASE
         + bias_strength * RESOLVE_MOVE_SCALE
         + average_reliability * RELIABILITY_MOVE_SCALE
-        + random.uniform(20.0, 65.0)
     )
+    # Keep settle moves in a tight range so rounds feel intense without huge +$200 drifts.
+    resolve_move = max(10.0, min(15.0, resolve_move))
     resolve_move = round(resolve_move / PRICE_STEP_DOLLARS) * PRICE_STEP_DOLLARS
     resolve_price = round(max(1000, starting_price + resolve_direction * resolve_move), 2)
     volatility = (
@@ -68,7 +61,7 @@ def build_market(news_cards: list[NewsCard]) -> MarketState:
         + average_reliability * ROUND_VOLATILITY_RELIABILITY
     )
     swing_phase = random.uniform(0.0, math.tau)
-    swing_cycles = random.uniform(4.4, 7.4)
+    swing_cycles = random.uniform(5.8, 8.8)
     return MarketState(
         target_price=starting_price,
         current_price=starting_price,
@@ -87,61 +80,61 @@ def build_market(news_cards: list[NewsCard]) -> MarketState:
 def advance_market_price(market: MarketState, price_velocity: float, delta_time: float) -> tuple[float, float]:
     progress = max(0.0, min(1.0, market.elapsed_seconds / MARKET_DURATION_SECONDS))
     previous = market.current_price
-    distance_to_resolve = market.resolve_price - previous
-    anchor_price = market.target_price + (market.resolve_price - market.target_price) * 0.35
-    trend_force = math.copysign(
-        ARTICLE_FORCE * (0.8 + market.volatility * 0.4),
-        market.price_bias or 1.0,
-    )
-    trend_weight = 0.35 + progress * 0.75
-    trend_force *= trend_weight
-    close_pull_weight = RESOLVE_PULL * (0.25 + progress * 0.75) + (progress ** 1.6) * ENDGAME_PULL
-    closing_pull = distance_to_resolve * close_pull_weight
-    gravity_force = (anchor_price - previous) * PRICE_GRAVITY * (0.7 + progress * 0.6)
+    resolve_delta = market.resolve_price - market.target_price
+
+    # Deterministic drift toward the preset settle level.
+    smooth_progress = progress * progress * (3 - 2 * progress)
+    drift = resolve_delta * smooth_progress
+
+    # Volatile multi-wave movement (no per-frame randomness) for a "crazy" look.
+    envelope = math.sin(math.pi * progress) ** 0.88
+    wave_strength = 8.5 + market.volatility * 3.8 + abs(resolve_delta) * 0.18
     primary_wave = math.sin(progress * math.tau * market.swing_cycles + market.swing_phase)
-    primary_wave *= PRICE_WAVE_FORCE * market.volatility
-    cross_wave = math.sin(
-        progress * math.tau * (market.swing_cycles * 2.15) - market.swing_phase * 0.55
+    secondary_wave = math.sin(
+        progress * math.tau * (market.swing_cycles * 2.4) - market.swing_phase * 0.66
     )
-    cross_wave *= SECONDARY_WAVE_FORCE * market.volatility
-    micro_wave = math.sin(
-        progress * math.tau * (market.swing_cycles * 4.65) + market.swing_phase * 1.8
+    tertiary_wave = math.sin(
+        progress * math.tau * (market.swing_cycles * 4.8) + market.swing_phase * 1.7
     )
-    micro_wave *= SECONDARY_WAVE_FORCE * 0.65 * market.volatility
-    smooth_noise = math.sin(progress * math.tau * (market.swing_cycles * 3.6) + market.swing_phase * 1.4)
-    smooth_noise += math.sin(progress * math.tau * (market.swing_cycles * 5.2) - market.swing_phase * 0.95) * 0.55
-    smooth_noise *= PRICE_NOISE * market.volatility
-    reversal_force = -math.tanh(price_velocity / 72.0) * PRICE_WAVE_FORCE * 0.52 * market.volatility
-    jitter_force = random.uniform(-1.3, 1.3) * PRICE_NOISE * 0.3 * market.volatility
-    jitter_force *= math.sqrt(max(delta_time, 0.001))
-    damping = price_velocity * VELOCITY_DAMPING
+    oscillation = envelope * wave_strength * (
+        0.9 * primary_wave + 0.55 * secondary_wave + 0.25 * tertiary_wave
+    )
 
-    price_velocity += (
-        trend_force
-        + closing_pull
-        + gravity_force
-        + primary_wave
-        + cross_wave
-        + micro_wave
-        + smooth_noise
-        + reversal_force
-        - damping
-    ) * delta_time + jitter_force
-    price_velocity = max(-MAX_PRICE_VELOCITY, min(MAX_PRICE_VELOCITY, price_velocity))
+    # Force both-direction action around the target line for stronger visual tension.
+    dip_center = 0.30 + 0.05 * math.sin(market.swing_phase * 0.5)
+    spike_center = 0.56 + 0.04 * math.cos(market.swing_phase * 0.7)
+    dip_width = 0.11
+    spike_width = 0.12
+    forced_dip = -(8.5 + max(0.0, resolve_delta) * 0.45) * math.exp(
+        -((progress - dip_center) / dip_width) ** 2
+    )
+    forced_spike = (7.5 + max(0.0, -resolve_delta) * 0.45) * math.exp(
+        -((progress - spike_center) / spike_width) ** 2
+    )
 
-    new_price = previous + price_velocity * delta_time
-    if progress > 0.82:
-        settle_blend = (progress - 0.82) / 0.18
-        new_price += distance_to_resolve * settle_blend * 0.25
-    current_price = round(max(1000, new_price), 2)
-    return price_velocity, current_price
+    raw_delta = drift + oscillation + forced_dip + forced_spike
+
+    # Hard-cap move size to prevent giant excursions while still looking very volatile.
+    top_cap = max(resolve_delta + 4.0, 10.0)
+    bottom_cap = min(resolve_delta - 4.0, -15.0)
+    bounded_delta = min(top_cap, max(bottom_cap, raw_delta))
+
+    # Snap cleanly into the predetermined settle result near the end of the round.
+    if progress > 0.94:
+        settle_blend = (progress - 0.94) / 0.06
+        bounded_delta = bounded_delta * (1 - settle_blend) + resolve_delta * settle_blend
+
+    current_price = round(max(1000, market.target_price + bounded_delta), 2)
+    derived_velocity = (current_price - previous) / max(delta_time, 1e-6)
+    derived_velocity = max(-MAX_PRICE_VELOCITY, min(MAX_PRICE_VELOCITY, derived_velocity))
+    return derived_velocity, current_price
 
 
 def contract_price(market: MarketState, side: str) -> int:
     gap = market.current_price - market.target_price
     progress = market.elapsed_seconds / MARKET_DURATION_SECONDS
-    expected_move = max(55.0, abs(market.resolve_price - market.target_price) * 0.55)
-    price_scale = max(28.0, expected_move * (1 - progress * 0.4))
+    expected_move = max(8.0, abs(market.resolve_price - market.target_price) * 0.9)
+    price_scale = max(4.8, expected_move * (1 - progress * 0.65))
     score = gap / price_scale
     score = max(-6.0, min(6.0, score))
     up_probability = 1 / (1 + math.exp(-score))
