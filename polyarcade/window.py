@@ -94,6 +94,8 @@ class BitcoinPredictionGame(arcade.Window):
         self.cursor_y = WINDOW_HEIGHT / 2
         self.cursor_click_flash = 0.0
         self.cursor_anim_time = 0.0
+        self._chart_prices_cache: list[float] = []
+        self._chart_prices_dirty = True
         self.news_cards = choose_news_cards(ALL_NEWS)
         self.market = self._new_market()
         self.set_mouse_visible(False)
@@ -102,6 +104,8 @@ class BitcoinPredictionGame(arcade.Window):
         self.tick_accumulator = 0.0
         self.price_velocity = 0.0
         self.market_transition = 0.0
+        self._chart_prices_cache = []
+        self._chart_prices_dirty = True
         self.position = None
         if demo_mode:
             self.selected_side = ""
@@ -237,6 +241,7 @@ class BitcoinPredictionGame(arcade.Window):
             while self.tick_accumulator >= PRICE_TICK_SECONDS and not self.market.settled:
                 self.tick_accumulator -= PRICE_TICK_SECONDS
                 self.market.history.append(self.market.current_price)
+                self._chart_prices_dirty = True
 
             if self.market.elapsed_seconds >= MARKET_DURATION_SECONDS and not self.market.settled:
                 self._settle_market()
@@ -247,6 +252,7 @@ class BitcoinPredictionGame(arcade.Window):
         self.market.active = False
         self.market.current_price = self.market.resolve_price
         self.market.history.append(self.market.current_price)
+        self._chart_prices_dirty = True
         self.market.settled = True
 
         winning_side = "Up" if self.market.current_price >= self.market.target_price else "Down"
@@ -985,15 +991,27 @@ class BitcoinPredictionGame(arcade.Window):
             arcade.draw_lbwh_rectangle_filled(left, bottom, fill_width, height, fill_color)
 
     def _sample_chart_prices(self) -> list[float]:
+        if not self._chart_prices_dirty and self._chart_prices_cache:
+            return self._chart_prices_cache
+
         price_series = list(self.market.history)
+        if not price_series:
+            self._chart_prices_cache = [self.market.current_price]
+            self._chart_prices_dirty = False
+            return self._chart_prices_cache
+
         if len(price_series) <= MAX_CHART_RENDER_POINTS:
-            return price_series
+            self._chart_prices_cache = price_series
+            self._chart_prices_dirty = False
+            return self._chart_prices_cache
 
         last_index = len(price_series) - 1
         stride = last_index / (MAX_CHART_RENDER_POINTS - 1)
         sampled = [price_series[round(index * stride)] for index in range(MAX_CHART_RENDER_POINTS - 1)]
         sampled.append(price_series[-1])
-        return sampled
+        self._chart_prices_cache = sampled
+        self._chart_prices_dirty = False
+        return self._chart_prices_cache
 
     def _draw_chart(self, left: float, bottom: float, width: float, height: float) -> None:
         arcade.draw_lbwh_rectangle_filled(left, bottom, width - 24, height, (12, 16, 20))
