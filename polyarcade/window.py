@@ -15,6 +15,7 @@ from .constants import (
     HEADER,
     MARKET_DURATION_SECONDS,
     MARKET_TRANSITION_SPEED,
+    MAX_CHART_RENDER_POINTS,
     MAX_AMOUNT_INPUT_CHARS,
     MAX_FRAME_SECONDS,
     MAX_FULL_NAME_CHARS,
@@ -983,6 +984,17 @@ class BitcoinPredictionGame(arcade.Window):
         if fill_width > 0:
             arcade.draw_lbwh_rectangle_filled(left, bottom, fill_width, height, fill_color)
 
+    def _sample_chart_prices(self) -> list[float]:
+        price_series = list(self.market.history)
+        if len(price_series) <= MAX_CHART_RENDER_POINTS:
+            return price_series
+
+        last_index = len(price_series) - 1
+        stride = last_index / (MAX_CHART_RENDER_POINTS - 1)
+        sampled = [price_series[round(index * stride)] for index in range(MAX_CHART_RENDER_POINTS - 1)]
+        sampled.append(price_series[-1])
+        return sampled
+
     def _draw_chart(self, left: float, bottom: float, width: float, height: float) -> None:
         arcade.draw_lbwh_rectangle_filled(left, bottom, width - 24, height, (12, 16, 20))
         arcade.draw_lbwh_rectangle_outline(left, bottom, width - 24, height, (24, 31, 39), 1)
@@ -992,7 +1004,7 @@ class BitcoinPredictionGame(arcade.Window):
             grid_color = (41, 51, 63) if row in (0, 4) else (27, 35, 44)
             arcade.draw_line(left, y, left + width - 24, y, grid_color, 1)
 
-        prices = self.market.history
+        prices = self._sample_chart_prices()
         chart_min = min(min(prices), self.market.target_price - 75)
         chart_max = max(max(prices), self.market.target_price + 125)
         padding = max(10, (chart_max - chart_min) * 0.08)
