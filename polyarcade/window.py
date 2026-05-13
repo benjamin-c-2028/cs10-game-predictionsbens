@@ -47,6 +47,7 @@ TEXT_CARET_BLINK_SECONDS = 0.9
 TEXT_CARET_VISIBLE_RATIO = 0.64
 PAGE_SWITCH_SPEED = 7.2
 RESULT_POPUP_DURATION = 2.4
+CHART_SMOOTHING_WINDOW = 5
 
 
 class BitcoinPredictionGame(arcade.Window):
@@ -1084,6 +1085,29 @@ class BitcoinPredictionGame(arcade.Window):
         self._chart_prices_dirty = False
         return self._chart_prices_cache
 
+    def _smooth_chart_prices(self, prices: list[float]) -> list[float]:
+        if len(prices) < 4:
+            return prices
+        window = CHART_SMOOTHING_WINDOW
+        if window <= 1:
+            return prices
+
+        radius = window // 2
+        smoothed: list[float] = []
+        for index in range(len(prices)):
+            start = max(0, index - radius)
+            end = min(len(prices), index + radius + 1)
+            weighted_sum = 0.0
+            weight_total = 0.0
+            for inner_index in range(start, end):
+                distance = abs(inner_index - index)
+                weight = float(radius + 1 - distance)
+                weighted_sum += prices[inner_index] * weight
+                weight_total += weight
+            smoothed.append(weighted_sum / weight_total if weight_total else prices[index])
+        smoothed[-1] = prices[-1]
+        return smoothed
+
     def _chart_geometry(self, left: float, bottom: float, width: float, height: float) -> dict[str, object]:
         dims = (left, bottom, width, height)
         if (
@@ -1093,9 +1117,10 @@ class BitcoinPredictionGame(arcade.Window):
         ):
             return self._chart_geometry_cache
 
-        prices = self._sample_chart_prices()
-        chart_min = min(min(prices), self.market.target_price - 75)
-        chart_max = max(max(prices), self.market.target_price + 125)
+        raw_prices = self._sample_chart_prices()
+        prices = self._smooth_chart_prices(raw_prices)
+        chart_min = min(min(raw_prices), self.market.target_price - 75)
+        chart_max = max(max(raw_prices), self.market.target_price + 125)
         padding = max(10, (chart_max - chart_min) * 0.08)
         low = chart_min - padding
         high = chart_max + padding
@@ -1431,35 +1456,55 @@ class BitcoinPredictionGame(arcade.Window):
         bottom = center_y - popup_height / 2
 
         if is_win:
-            for ring_index in range(3):
-                ring_progress = progress * 1.25 - ring_index * 0.12
-                if ring_progress <= 0:
+            confetti_count = 14
+            for confetti_index in range(confetti_count):
+                lane = (confetti_index * 0.173) % 1.0
+                cycle = (progress * 1.3 + confetti_index * 0.09) % 1.0
+                confetti_x = left + 26 + (popup_width - 52) * lane
+                confetti_x += math.sin(progress * 8.2 + confetti_index * 1.1) * 6.0
+                confetti_y = bottom + popup_height + 8 + cycle * 56
+                confetti_alpha = int(max(0, 180 - cycle * 145) * fade)
+                if confetti_alpha <= 0:
                     continue
-                ring_radius = 48 + ring_progress * 116
-                ring_alpha = int(max(0, 120 - ring_progress * 120) * fade)
-                if ring_alpha <= 0:
-                    continue
-                arcade.draw_circle_outline(
-                    center_x,
-                    center_y + 2,
-                    ring_radius,
-                    (*GREEN, ring_alpha),
-                    border_width=1,
+                size = 2.4 + (confetti_index % 3) * 0.8
+                if confetti_index % 3 == 0:
+                    confetti_color = GREEN
+                elif confetti_index % 3 == 1:
+                    confetti_color = YELLOW
+                else:
+                    confetti_color = BLUE
+                arcade.draw_polygon_filled(
+                    (
+                        (confetti_x, confetti_y + size),
+                        (confetti_x + size, confetti_y),
+                        (confetti_x, confetti_y - size),
+                        (confetti_x - size, confetti_y),
+                    ),
+                    (*confetti_color, confetti_alpha),
                 )
-            for particle_index in range(12):
-                angle = (particle_index / 12) * math.tau + progress * 4.5
-                distance = 52 + progress * 92 + (particle_index % 3) * 8
-                particle_x = center_x + math.cos(angle) * distance
-                particle_y = center_y + math.sin(angle) * distance * 0.55
-                particle_alpha = int(max(0, 200 - progress * 180) * fade)
-                if particle_alpha <= 0:
-                    continue
-                arcade.draw_circle_filled(
-                    particle_x,
-                    particle_y,
-                    2.4,
-                    (*GREEN, particle_alpha),
-                )
+
+            badge_radius = 24 * scale
+            badge_x = left + popup_width - 42 * scale
+            badge_y = bottom + popup_height - 40 * scale
+            arcade.draw_circle_filled(badge_x, badge_y, badge_radius, (*GREEN, int(220 * fade)))
+            arcade.draw_circle_outline(badge_x, badge_y, badge_radius, (*WHITE, int(220 * fade)), 2)
+            check_alpha = int(230 * fade)
+            arcade.draw_line(
+                badge_x - badge_radius * 0.38,
+                badge_y - badge_radius * 0.02,
+                badge_x - badge_radius * 0.1,
+                badge_y - badge_radius * 0.3,
+                (*WHITE, check_alpha),
+                3,
+            )
+            arcade.draw_line(
+                badge_x - badge_radius * 0.1,
+                badge_y - badge_radius * 0.3,
+                badge_x + badge_radius * 0.4,
+                badge_y + badge_radius * 0.24,
+                (*WHITE, check_alpha),
+                3,
+            )
         else:
             for streak_index in range(8):
                 phase = (streak_index * 0.12 + progress * 1.8) % 1.0
