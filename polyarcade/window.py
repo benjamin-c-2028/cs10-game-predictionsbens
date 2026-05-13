@@ -1100,11 +1100,9 @@ class BitcoinPredictionGame(arcade.Window):
         arcade.draw_text("Target", left + width - 76, target_y + 8, YELLOW, 11, bold=True)
 
         if area_points:
-            arcade.draw_polygon_filled(area_points, (247, 151, 38, 28))
-            arcade.draw_line_strip(points, (247, 151, 38, 80), 7)
-            arcade.draw_line_strip(points, ORANGE, 3)
-            arcade.draw_circle_filled(points[-1][0], points[-1][1], 5, ORANGE)
-            arcade.draw_circle_outline(points[-1][0], points[-1][1], 10, (247, 151, 38, 90), 2)
+            arcade.draw_line_strip(points, ORANGE, 2)
+            arcade.draw_circle_filled(points[-1][0], points[-1][1], 4, ORANGE)
+            arcade.draw_circle_outline(points[-1][0], points[-1][1], 8, ORANGE, 1)
 
         for index, value in enumerate(scale_labels):
             y = bottom + index * height / 2
@@ -1182,45 +1180,23 @@ class BitcoinPredictionGame(arcade.Window):
         disabled = self.position is not None or self.market.settled
         active = self.amount_input_active and not disabled
         show_attention = self._should_flash_amount_field() and not disabled
-        pulse = 0.5 + 0.5 * math.sin(self.ui_animation_seconds * 8.8)
 
         amount_pulse = self._pulse_fraction(speed=9.0)
-        if active:
-            glow_alpha = int(24 + 32 * amount_pulse)
-            arcade.draw_lbwh_rectangle_filled(
-                zone.left - 3,
-                zone.bottom - 3,
-                zone.width + 6,
-                zone.height + 6,
-                (*BLUE, glow_alpha),
-            )
 
         color = PANEL_SOFT if active else PANEL_ALT
         if self.hovered_key == "amount_input" and not disabled:
             color = (41, 52, 65)
         if active:
-            color = self._boost_rgb(PANEL_SOFT, int(5 + 9 * amount_pulse))
-        elif show_attention:
-            color = self._blend_color(color, PANEL_SOFT, 0.24 + pulse * 0.24)
+            color = self._boost_rgb(PANEL_SOFT, int(3 + 7 * amount_pulse))
 
-        border_color = self._boost_rgb(BLUE, int(14 + 20 * amount_pulse)) if active else BORDER
+        border_color = BLUE if active else BORDER
         border_width = 2 if active else 1
         if show_attention and not active:
-            border_color = self._blend_color(BLUE, YELLOW, 0.32 + pulse * 0.55)
-            border_width = 2 if pulse > 0.28 else 1
+            border_color = YELLOW
+            border_width = 2
 
         arcade.draw_lbwh_rectangle_filled(zone.left, zone.bottom, zone.width, zone.height, color)
         arcade.draw_lbwh_rectangle_outline(zone.left, zone.bottom, zone.width, zone.height, border_color, border_width)
-        if show_attention and not active:
-            outer_color = self._blend_color(BLUE, YELLOW, 0.45 + pulse * 0.35)
-            arcade.draw_lbwh_rectangle_outline(
-                zone.left - 3,
-                zone.bottom - 3,
-                zone.width + 6,
-                zone.height + 6,
-                outer_color,
-                1,
-            )
 
         if self.amount_input_text:
             amount_text = f"${self.amount_input_text}"
@@ -1252,18 +1228,6 @@ class BitcoinPredictionGame(arcade.Window):
         if self.market.settled or self.position is not None or self.amount_input_active:
             return False
         return bool(self.selected_side) and self.selected_amount <= 0
-
-    def _blend_color(
-        self,
-        source: tuple[int, int, int],
-        target: tuple[int, int, int],
-        amount: float,
-    ) -> tuple[int, int, int]:
-        mix = max(0.0, min(1.0, amount))
-        return tuple(
-            int(source[channel] + (target[channel] - source[channel]) * mix)
-            for channel in range(3)
-        )
 
     def _draw_position_summary(self, left: float, top: float, width: float) -> None:
         balance_label = "Demo Cash" if self.demo_round_active else f"{self._player_call_name()}'s Balance"
@@ -1385,6 +1349,21 @@ class BitcoinPredictionGame(arcade.Window):
             13,
             anchor_x="center",
         )
+
+    def _draw_page_transition(self) -> None:
+        if self.page_transition_progress >= 1.0:
+            return
+
+        eased = self.page_transition_progress ** 0.82
+        reveal_x = WINDOW_WIDTH * eased
+        cover_width = max(0.0, WINDOW_WIDTH - reveal_x)
+        if cover_width <= 0:
+            return
+
+        arcade.draw_lbwh_rectangle_filled(reveal_x, 0, cover_width, WINDOW_HEIGHT, HEADER)
+        arcade.draw_line(reveal_x, 0, reveal_x, WINDOW_HEIGHT, BLUE, 2)
+        trail_x = max(0.0, reveal_x - 16.0)
+        arcade.draw_line(trail_x, 0, trail_x, WINDOW_HEIGHT, BORDER, 1)
 
     def _format_money(self, value: float) -> str:
         return f"${value:,.2f}"
