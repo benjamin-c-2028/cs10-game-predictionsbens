@@ -94,7 +94,11 @@ class BitcoinPredictionGame(arcade.Window):
         self.cursor_y = WINDOW_HEIGHT / 2
         self.cursor_click_flash = 0.0
         self.cursor_anim_time = 0.0
+        self._hover_refresh_needed = True
         self._chart_prices_cache: list[float] = []
+        self._chart_geometry_cache: dict[str, object] | None = None
+        self._chart_geometry_dims: tuple[float, float, float, float] | None = None
+        self._chart_geometry_dirty = True
         self._chart_prices_dirty = True
         self.news_cards = choose_news_cards(ALL_NEWS)
         self.market = self._new_market()
@@ -106,7 +110,10 @@ class BitcoinPredictionGame(arcade.Window):
         # Keep click response immediate: do not fade in a post-click transition overlay.
         self.market_transition = 1.0
         self._chart_prices_cache = []
-        self._chart_prices_dirty = True
+        self._chart_geometry_cache = None
+        self._chart_geometry_dims = None
+        self._mark_chart_dirty()
+        self._hover_refresh_needed = True
         self.position = None
         if demo_mode:
             self.selected_side = ""
@@ -175,20 +182,20 @@ class BitcoinPredictionGame(arcade.Window):
 
     def on_draw(self) -> None:
         self.clear()
-        self.click_zones = []
+        self.click_zones.clear()
         if self.onboarding_active:
             self._draw_onboarding()
-            self._update_hovered_key(self.cursor_x, self.cursor_y)
+            self._refresh_hovered_key_if_needed()
             self._draw_game_cursor()
             return
         if self.tutorial_active:
             self._draw_tutorial_page()
-            self._update_hovered_key(self.cursor_x, self.cursor_y)
+            self._refresh_hovered_key_if_needed()
             self._draw_game_cursor()
             return
         if self.dashboard_active:
             self._draw_dashboard()
-            self._update_hovered_key(self.cursor_x, self.cursor_y)
+            self._refresh_hovered_key_if_needed()
             self._draw_game_cursor()
             return
 
@@ -197,7 +204,7 @@ class BitcoinPredictionGame(arcade.Window):
         self._draw_ticket()
         self._draw_news_cards()
         self._draw_transition_overlay()
-        self._update_hovered_key(self.cursor_x, self.cursor_y)
+        self._refresh_hovered_key_if_needed()
         self._draw_game_cursor()
 
     def on_update(self, delta_time: float) -> None:
@@ -242,7 +249,7 @@ class BitcoinPredictionGame(arcade.Window):
             while self.tick_accumulator >= PRICE_TICK_SECONDS and not self.market.settled:
                 self.tick_accumulator -= PRICE_TICK_SECONDS
                 self.market.history.append(self.market.current_price)
-                self._chart_prices_dirty = True
+                self._mark_chart_dirty()
 
             if self.market.elapsed_seconds >= MARKET_DURATION_SECONDS and not self.market.settled:
                 self._settle_market()
@@ -253,8 +260,9 @@ class BitcoinPredictionGame(arcade.Window):
         self.market.active = False
         self.market.current_price = self.market.resolve_price
         self.market.history.append(self.market.current_price)
-        self._chart_prices_dirty = True
+        self._mark_chart_dirty()
         self.market.settled = True
+        self._hover_refresh_needed = True
 
         winning_side = "Up" if self.market.current_price >= self.market.target_price else "Down"
         call_name = self._player_call_name()
@@ -390,11 +398,22 @@ class BitcoinPredictionGame(arcade.Window):
         hovered_zone = self._topmost_zone_at(x, y)
         self.hovered_key = hovered_zone.key if hovered_zone is not None else None
 
+    def _refresh_hovered_key_if_needed(self) -> None:
+        if not self._hover_refresh_needed:
+            return
+        self._update_hovered_key(self.cursor_x, self.cursor_y)
+        self._hover_refresh_needed = False
+
+    def _mark_chart_dirty(self) -> None:
+        self._chart_prices_dirty = True
+        self._chart_geometry_dirty = True
+
     def on_mouse_motion(self, x: float, y: float, dx: float, dy: float) -> None:
         del dx, dy
         self.cursor_x = x
         self.cursor_y = y
         self._update_hovered_key(x, y)
+        self._hover_refresh_needed = False
 
     def on_mouse_drag(
         self,
@@ -409,6 +428,7 @@ class BitcoinPredictionGame(arcade.Window):
         self.cursor_x = x
         self.cursor_y = y
         self._update_hovered_key(x, y)
+        self._hover_refresh_needed = False
 
     def on_mouse_press(self, x: float, y: float, button: int, modifiers: int) -> None:
         del modifiers
@@ -420,6 +440,7 @@ class BitcoinPredictionGame(arcade.Window):
         self.cursor_click_flash = 1.0
         clicked_key = self._resolve_click_key(x, y)
         self._update_hovered_key(x, y)
+        self._hover_refresh_needed = False
 
         if clicked_key is None:
             self.amount_input_active = False
@@ -436,10 +457,12 @@ class BitcoinPredictionGame(arcade.Window):
                 self.tutorial_active = False
                 self.market_transition = 1.0
                 self._start_demo_round()
+                self._hover_refresh_needed = True
             return
 
         if clicked_key == "dashboard_toggle":
             self.dashboard_active = not self.dashboard_active
+            self._hover_refresh_needed = True
             return
 
         if clicked_key == "amount_input" and not self.market.settled and self.position is None:
@@ -455,6 +478,7 @@ class BitcoinPredictionGame(arcade.Window):
                 self._finish_demo_round()
             else:
                 self.market = self._new_market()
+            self._hover_refresh_needed = True
             return
 
         if self.position is not None:
@@ -536,6 +560,7 @@ class BitcoinPredictionGame(arcade.Window):
         self.onboarding_name_active = False
         self.onboarding_active = False
         self.tutorial_active = True
+        self._hover_refresh_needed = True
         self.status_message = "Tutorial opened. The first round will be a guided demo."
 
     def _player_call_name(self) -> str:
@@ -564,18 +589,10 @@ class BitcoinPredictionGame(arcade.Window):
         if not self._is_caret_visible():
             return
 
-        measured_text = arcade.Text(
-            typed_text,
-            0,
-            0,
-            TEXT,
-            font_size=font_size,
-            bold=bold,
-        )
+        del bold
         approx_char_width = max(7.0, font_size * 0.56)
         max_text_width = max(0.0, zone.width - (text_left - zone.left) - 18)
-        measured_width = measured_text.content_width if typed_text else 0.0
-        raw_text_width = measured_width if measured_width > 0 else len(typed_text) * approx_char_width
+        raw_text_width = len(typed_text) * approx_char_width
         text_width = min(raw_text_width, max_text_width)
         caret_x = min(text_left + text_width + 2.0, zone.right - 14.0)
         caret_bottom = zone.bottom + 11.0
@@ -1008,14 +1025,14 @@ class BitcoinPredictionGame(arcade.Window):
         self._chart_prices_dirty = False
         return self._chart_prices_cache
 
-    def _draw_chart(self, left: float, bottom: float, width: float, height: float) -> None:
-        arcade.draw_lbwh_rectangle_filled(left, bottom, width - 24, height, (12, 16, 20))
-        arcade.draw_lbwh_rectangle_outline(left, bottom, width - 24, height, (24, 31, 39), 1)
-
-        for row in range(5):
-            y = bottom + row * height / 4
-            grid_color = (41, 51, 63) if row in (0, 4) else (27, 35, 44)
-            arcade.draw_line(left, y, left + width - 24, y, grid_color, 1)
+    def _chart_geometry(self, left: float, bottom: float, width: float, height: float) -> dict[str, object]:
+        dims = (left, bottom, width, height)
+        if (
+            not self._chart_geometry_dirty
+            and self._chart_geometry_cache is not None
+            and self._chart_geometry_dims == dims
+        ):
+            return self._chart_geometry_cache
 
         prices = self._sample_chart_prices()
         chart_min = min(min(prices), self.market.target_price - 75)
@@ -1024,11 +1041,9 @@ class BitcoinPredictionGame(arcade.Window):
         low = chart_min - padding
         high = chart_max + padding
         span = max(1, high - low)
+        chart_right = left + width - 24
 
         target_y = bottom + ((self.market.target_price - low) / span) * height
-        arcade.draw_line(left, target_y, left + width - 24, target_y, (143, 97, 45), 2)
-        arcade.draw_text("Target", left + width - 76, target_y + 8, YELLOW, 11, bold=True)
-
         points: list[tuple[float, float]] = []
         step = (width - 46) / max(1, len(prices) - 1)
         for index, price in enumerate(prices):
@@ -1036,15 +1051,48 @@ class BitcoinPredictionGame(arcade.Window):
             y = bottom + ((price - low) / span) * height
             points.append((x, y))
 
+        area_points: list[tuple[float, float]] = []
         if len(points) > 1:
             area_points = [(points[0][0], bottom), *points, (points[-1][0], bottom)]
+
+        geometry: dict[str, object] = {
+            "chart_right": chart_right,
+            "target_y": target_y,
+            "points": points,
+            "area_points": area_points,
+            "scale_labels": (low, (low + high) / 2, high),
+        }
+        self._chart_geometry_cache = geometry
+        self._chart_geometry_dims = dims
+        self._chart_geometry_dirty = False
+        return geometry
+
+    def _draw_chart(self, left: float, bottom: float, width: float, height: float) -> None:
+        chart_right = left + width - 24
+        arcade.draw_lbwh_rectangle_filled(left, bottom, width - 24, height, (12, 16, 20))
+        arcade.draw_lbwh_rectangle_outline(left, bottom, width - 24, height, (24, 31, 39), 1)
+
+        for row in range(5):
+            y = bottom + row * height / 4
+            grid_color = (41, 51, 63) if row in (0, 4) else (27, 35, 44)
+            arcade.draw_line(left, y, chart_right, y, grid_color, 1)
+
+        geometry = self._chart_geometry(left, bottom, width, height)
+        target_y = float(geometry["target_y"])
+        points = geometry["points"]
+        area_points = geometry["area_points"]
+        scale_labels = geometry["scale_labels"]
+        arcade.draw_line(left, target_y, chart_right, target_y, (143, 97, 45), 2)
+        arcade.draw_text("Target", left + width - 76, target_y + 8, YELLOW, 11, bold=True)
+
+        if area_points:
             arcade.draw_polygon_filled(area_points, (247, 151, 38, 28))
             arcade.draw_line_strip(points, (247, 151, 38, 80), 7)
             arcade.draw_line_strip(points, ORANGE, 3)
             arcade.draw_circle_filled(points[-1][0], points[-1][1], 5, ORANGE)
             arcade.draw_circle_outline(points[-1][0], points[-1][1], 10, (247, 151, 38, 90), 2)
 
-        for index, value in enumerate((low, (low + high) / 2, high)):
+        for index, value in enumerate(scale_labels):
             y = bottom + index * height / 2
             arcade.draw_text(self._format_money(value), left + width - 12, y - 8, MUTED_DARK, 11, anchor_x="right")
 
