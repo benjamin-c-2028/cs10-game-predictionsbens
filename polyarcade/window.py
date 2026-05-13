@@ -46,6 +46,7 @@ TEXTBOX_PULSE_SPEED = 11.0
 TEXT_CARET_BLINK_SECONDS = 0.9
 TEXT_CARET_VISIBLE_RATIO = 0.64
 PAGE_SWITCH_SPEED = 7.2
+RESULT_POPUP_DURATION = 2.4
 
 
 class BitcoinPredictionGame(arcade.Window):
@@ -97,8 +98,13 @@ class BitcoinPredictionGame(arcade.Window):
         self.cursor_anim_time = 0.0
         self.page_transition_progress = 1.0
         self.page_key = "onboarding"
+        self.result_popup_kind: str | None = None
+        self.result_popup_timer = 0.0
+        self.result_popup_amount = 0.0
+        self.result_popup_side = ""
         self._hover_refresh_needed = True
         self._chart_prices_cache: list[float] = []
+        self._text_width_cache: dict[tuple[str, int, bool], float] = {}
         self._chart_geometry_cache: dict[str, object] | None = None
         self._chart_geometry_dims: tuple[float, float, float, float] | None = None
         self._chart_geometry_dirty = True
@@ -121,6 +127,10 @@ class BitcoinPredictionGame(arcade.Window):
         self.price_velocity = 0.0
         # Keep click response immediate: do not fade in a post-click transition overlay.
         self.market_transition = 1.0
+        self.result_popup_kind = None
+        self.result_popup_timer = 0.0
+        self.result_popup_amount = 0.0
+        self.result_popup_side = ""
         self._chart_prices_cache = []
         self._chart_geometry_cache = None
         self._chart_geometry_dims = None
@@ -223,6 +233,7 @@ class BitcoinPredictionGame(arcade.Window):
         self._draw_ticket()
         self._draw_news_cards()
         self._draw_transition_overlay()
+        self._draw_result_popup()
         self._refresh_hovered_key_if_needed()
         self._draw_game_cursor()
         self._draw_page_transition()
@@ -233,6 +244,10 @@ class BitcoinPredictionGame(arcade.Window):
         animation_delta = min(delta_time, MAX_FRAME_SECONDS)
         self.cursor_anim_time += animation_delta
         self.cursor_click_flash = max(0.0, self.cursor_click_flash - animation_delta * 6.0)
+        if self.result_popup_kind is not None:
+            self.result_popup_timer = max(0.0, self.result_popup_timer - delta_time)
+            if self.result_popup_timer <= 0:
+                self.result_popup_kind = None
         if self.page_transition_progress < 1.0:
             self.page_transition_progress = min(
                 1.0,
@@ -304,11 +319,13 @@ class BitcoinPredictionGame(arcade.Window):
 
         payout = round(self.position.shares, 2)
         if self.position.side == winning_side:
+            profit_value = round(payout - self.position.amount, 2)
             if self.demo_round_active:
                 self.demo_balance += payout
             else:
                 self.balance += payout
             self.position.resolved_result = "Won"
+            self._trigger_result_popup("win", profit_value, winning_side)
             if self.demo_round_active:
                 self.demo_round_complete = True
                 self.status_message = (
@@ -322,7 +339,9 @@ class BitcoinPredictionGame(arcade.Window):
                     f"{call_name}, {winning_side} wins. Your ${self.position.amount} position paid ${payout:,.2f}."
                 )
         else:
+            loss_value = -float(self.position.amount)
             self.position.resolved_result = "Lost"
+            self._trigger_result_popup("loss", loss_value, winning_side)
             if self.demo_round_active:
                 self.demo_round_complete = True
                 self.status_message = (
@@ -335,6 +354,12 @@ class BitcoinPredictionGame(arcade.Window):
                 self.status_message = (
                     f"{call_name}, {winning_side} wins. Your {self.position.side} position expired at $0."
                 )
+
+    def _trigger_result_popup(self, kind: str, amount: float, winning_side: str) -> None:
+        self.result_popup_kind = kind
+        self.result_popup_timer = RESULT_POPUP_DURATION
+        self.result_popup_amount = amount
+        self.result_popup_side = winning_side
 
     def _record_trade(self, winning_side: str, profit_loss: float) -> None:
         if self.position is None:
@@ -603,6 +628,28 @@ class BitcoinPredictionGame(arcade.Window):
         cycle_pos = self.cursor_anim_time % TEXT_CARET_BLINK_SECONDS
         return cycle_pos < TEXT_CARET_BLINK_SECONDS * TEXT_CARET_VISIBLE_RATIO
 
+    def _measure_text_width(self, text: str, font_size: int, bold: bool) -> float:
+        if not text:
+            return 0.0
+        key = (text, font_size, bold)
+        cached_width = self._text_width_cache.get(key)
+        if cached_width is not None:
+            return cached_width
+
+        measured_text = arcade.Text(
+            text,
+            0,
+            0,
+            TEXT,
+            font_size=font_size,
+            bold=bold,
+        )
+        measured_width = float(measured_text.content_width)
+        if len(self._text_width_cache) > 320:
+            self._text_width_cache.clear()
+        self._text_width_cache[key] = measured_width
+        return measured_width
+
     def _draw_textbox_caret(
         self,
         zone: ClickZone,
@@ -614,10 +661,8 @@ class BitcoinPredictionGame(arcade.Window):
         if not self._is_caret_visible():
             return
 
-        del bold
-        approx_char_width = max(7.0, font_size * 0.56)
         max_text_width = max(0.0, zone.width - (text_left - zone.left) - 18)
-        raw_text_width = len(typed_text) * approx_char_width
+        raw_text_width = self._measure_text_width(typed_text, font_size, bold)
         text_width = min(raw_text_width, max_text_width)
         caret_x = min(text_left + text_width + 2.0, zone.right - 14.0)
         caret_bottom = zone.bottom + 11.0
@@ -1348,6 +1393,116 @@ class BitcoinPredictionGame(arcade.Window):
             (141, 151, 166, text_alpha),
             13,
             anchor_x="center",
+        )
+
+    def _draw_result_popup(self) -> None:
+        if self.result_popup_kind is None:
+            return
+
+        progress = 1.0 - (self.result_popup_timer / RESULT_POPUP_DURATION)
+        progress = max(0.0, min(1.0, progress))
+        enter_phase = min(1.0, progress / 0.18)
+        enter_ease = enter_phase * enter_phase * (3 - 2 * enter_phase)
+        exit_phase = max(0.0, (progress - 0.8) / 0.2)
+        fade = 1.0 - (exit_phase * exit_phase)
+        alpha = int(232 * fade)
+        if alpha <= 0:
+            return
+
+        is_win = self.result_popup_kind == "win"
+        accent = GREEN if is_win else RED
+        title = "WIN" if is_win else "LOSS"
+        result_line = (
+            f"Settled {self.result_popup_side} | {self._format_delta(self.result_popup_amount)}"
+            if self.result_popup_side
+            else self._format_delta(self.result_popup_amount)
+        )
+
+        scale = 0.9 + enter_ease * 0.1
+        popup_width = 448 * scale
+        popup_height = 158 * scale
+        center_x = WINDOW_WIDTH / 2
+        center_y = WINDOW_HEIGHT - 186 + math.sin(progress * math.tau * 1.2) * 5 * fade
+        shake_x = 0.0
+        if not is_win:
+            shake_x = math.sin(progress * 90.0) * max(0.0, 1.0 - progress * 2.6) * 6.5
+        center_x += shake_x
+        left = center_x - popup_width / 2
+        bottom = center_y - popup_height / 2
+
+        if is_win:
+            for ring_index in range(3):
+                ring_progress = progress * 1.25 - ring_index * 0.12
+                if ring_progress <= 0:
+                    continue
+                ring_radius = 48 + ring_progress * 116
+                ring_alpha = int(max(0, 120 - ring_progress * 120) * fade)
+                if ring_alpha <= 0:
+                    continue
+                arcade.draw_circle_outline(
+                    center_x,
+                    center_y + 2,
+                    ring_radius,
+                    (*GREEN, ring_alpha),
+                    border_width=1,
+                )
+            for particle_index in range(12):
+                angle = (particle_index / 12) * math.tau + progress * 4.5
+                distance = 52 + progress * 92 + (particle_index % 3) * 8
+                particle_x = center_x + math.cos(angle) * distance
+                particle_y = center_y + math.sin(angle) * distance * 0.55
+                particle_alpha = int(max(0, 200 - progress * 180) * fade)
+                if particle_alpha <= 0:
+                    continue
+                arcade.draw_circle_filled(
+                    particle_x,
+                    particle_y,
+                    2.4,
+                    (*GREEN, particle_alpha),
+                )
+        else:
+            for streak_index in range(8):
+                phase = (streak_index * 0.12 + progress * 1.8) % 1.0
+                streak_x = center_x - 160 + streak_index * 45
+                streak_top = center_y + 86 - phase * 150
+                streak_alpha = int((130 - phase * 100) * fade)
+                if streak_alpha <= 0:
+                    continue
+                arcade.draw_line(
+                    streak_x,
+                    streak_top,
+                    streak_x,
+                    streak_top - 22,
+                    (*RED, streak_alpha),
+                    1,
+                )
+
+        arcade.draw_lbwh_rectangle_filled(left, bottom, popup_width, popup_height, (*PANEL, alpha))
+        arcade.draw_lbwh_rectangle_outline(left, bottom, popup_width, popup_height, (*accent, alpha), 2)
+        arcade.draw_line(left, bottom + popup_height - 12, left + popup_width, bottom + popup_height - 12, (*accent, alpha), 2)
+        arcade.draw_text(
+            title,
+            left + 20,
+            bottom + popup_height - 50,
+            (*accent, alpha),
+            int(32 * scale),
+            bold=True,
+        )
+        arcade.draw_text(
+            result_line,
+            left + 22,
+            bottom + popup_height - 92,
+            (*TEXT, alpha),
+            int(16 * scale),
+            bold=True,
+        )
+        subtitle = "Nice call. Click New Market when ready." if is_win else "Tough round. Click New Market to run it back."
+        arcade.draw_text(
+            subtitle,
+            left + 22,
+            bottom + 24,
+            (*MUTED, alpha),
+            int(12 * scale),
         )
 
     def _draw_page_transition(self) -> None:
