@@ -45,6 +45,7 @@ CURSOR_TEXT_KEYS = frozenset({"onboard_name", "amount_input"})
 TEXTBOX_PULSE_SPEED = 11.0
 TEXT_CARET_BLINK_SECONDS = 0.9
 TEXT_CARET_VISIBLE_RATIO = 0.64
+PAGE_SWITCH_SPEED = 7.2
 
 
 class BitcoinPredictionGame(arcade.Window):
@@ -58,8 +59,8 @@ class BitcoinPredictionGame(arcade.Window):
             resizable=False,
             update_rate=1 / 60,
             draw_rate=1 / 60,
-            antialiasing=True,
-            samples=4,
+            antialiasing=False,
+            samples=0,
             vsync=True,
         )
         arcade.set_background_color(BACKGROUND)
@@ -94,6 +95,8 @@ class BitcoinPredictionGame(arcade.Window):
         self.cursor_y = WINDOW_HEIGHT / 2
         self.cursor_click_flash = 0.0
         self.cursor_anim_time = 0.0
+        self.page_transition_progress = 1.0
+        self.page_key = "onboarding"
         self._hover_refresh_needed = True
         self._chart_prices_cache: list[float] = []
         self._chart_geometry_cache: dict[str, object] | None = None
@@ -103,6 +106,15 @@ class BitcoinPredictionGame(arcade.Window):
         self.news_cards = choose_news_cards(ALL_NEWS)
         self.market = self._new_market()
         self.set_mouse_visible(False)
+
+    def _current_page_key(self) -> str:
+        if self.onboarding_active:
+            return "onboarding"
+        if self.tutorial_active:
+            return "tutorial"
+        if self.dashboard_active:
+            return "dashboard"
+        return "market"
 
     def _new_market(self, demo_mode: bool = False) -> MarketState:
         self.tick_accumulator = 0.0
@@ -183,20 +195,27 @@ class BitcoinPredictionGame(arcade.Window):
     def on_draw(self) -> None:
         self.clear()
         self.click_zones.clear()
+        current_page = self._current_page_key()
+        if current_page != self.page_key:
+            self.page_key = current_page
+            self.page_transition_progress = 0.0
         if self.onboarding_active:
             self._draw_onboarding()
             self._refresh_hovered_key_if_needed()
             self._draw_game_cursor()
+            self._draw_page_transition()
             return
         if self.tutorial_active:
             self._draw_tutorial_page()
             self._refresh_hovered_key_if_needed()
             self._draw_game_cursor()
+            self._draw_page_transition()
             return
         if self.dashboard_active:
             self._draw_dashboard()
             self._refresh_hovered_key_if_needed()
             self._draw_game_cursor()
+            self._draw_page_transition()
             return
 
         self._draw_header()
@@ -206,6 +225,7 @@ class BitcoinPredictionGame(arcade.Window):
         self._draw_transition_overlay()
         self._refresh_hovered_key_if_needed()
         self._draw_game_cursor()
+        self._draw_page_transition()
 
     def on_update(self, delta_time: float) -> None:
         delta_time = max(0.0, delta_time)
@@ -213,6 +233,11 @@ class BitcoinPredictionGame(arcade.Window):
         animation_delta = min(delta_time, MAX_FRAME_SECONDS)
         self.cursor_anim_time += animation_delta
         self.cursor_click_flash = max(0.0, self.cursor_click_flash - animation_delta * 6.0)
+        if self.page_transition_progress < 1.0:
+            self.page_transition_progress = min(
+                1.0,
+                self.page_transition_progress + delta_time * PAGE_SWITCH_SPEED,
+            )
 
         if self.onboarding_active or self.tutorial_active:
             return
@@ -657,23 +682,13 @@ class BitcoinPredictionGame(arcade.Window):
         self.click_zones.append(name_zone)
         name_is_active = self.onboarding_name_active
         name_pulse = self._pulse_fraction()
-        if name_is_active:
-            glow_alpha = int(28 + 40 * name_pulse)
-            arcade.draw_lbwh_rectangle_filled(
-                name_zone.left - 4,
-                name_zone.bottom - 4,
-                name_zone.width + 8,
-                name_zone.height + 8,
-                (*BLUE, glow_alpha),
-            )
-
         name_fill = PANEL_SOFT
         if name_is_active:
-            name_fill = self._boost_rgb(PANEL_SOFT, int(6 + 11 * name_pulse))
+            name_fill = self._boost_rgb(PANEL_SOFT, int(4 + 8 * name_pulse))
         elif self.hovered_key == "onboard_name":
             name_fill = (41, 52, 65)
 
-        name_border = self._boost_rgb(BLUE, int(16 + 22 * name_pulse)) if name_is_active else BORDER
+        name_border = BLUE if name_is_active else BORDER
         arcade.draw_lbwh_rectangle_filled(name_zone.left, name_zone.bottom, name_zone.width, name_zone.height, name_fill)
         arcade.draw_lbwh_rectangle_outline(
             name_zone.left,
@@ -818,21 +833,20 @@ class BitcoinPredictionGame(arcade.Window):
         is_click_target = self.hovered_key is not None
         cursor_color = WHITE
 
-        pulse = 1 + 0.05 * math.sin(self.cursor_anim_time * 9)
-        outer_radius = (10 if is_click_target else 8) * pulse + self.cursor_click_flash * 2.8
-        inner_radius = 3.4 + self.cursor_click_flash
-        glow_alpha = min(255, int(70 + 140 * self.cursor_click_flash))
-        outer_color = (*cursor_color, glow_alpha)
-        ring_color = (*cursor_color, 220)
-        center_color = (*TEXT, 235)
+        pulse = 1 + 0.035 * math.sin(self.cursor_anim_time * 9)
+        outer_radius = (9 if is_click_target else 7) * pulse + self.cursor_click_flash * 1.8
+        inner_radius = 2.9 + self.cursor_click_flash * 0.45
+        outer_color = cursor_color
+        ring_color = cursor_color
+        center_color = TEXT
 
-        arcade.draw_circle_outline(self.cursor_x, self.cursor_y, outer_radius, outer_color, border_width=3)
+        arcade.draw_circle_outline(self.cursor_x, self.cursor_y, outer_radius, outer_color, border_width=2)
         arcade.draw_circle_outline(
             self.cursor_x,
             self.cursor_y,
             max(outer_radius - 4.0, 4.0),
             ring_color,
-            border_width=1.2,
+            border_width=1,
         )
         arcade.draw_circle_filled(self.cursor_x, self.cursor_y, inner_radius, center_color)
 
