@@ -10,7 +10,6 @@ from .constants import (
     MARKET_DURATION_SECONDS,
     MAX_PRICE_VELOCITY,
     PRICE_HISTORY_LIMIT,
-    PRICE_STEP_DOLLARS,
     RELIABILITY_MOVE_SCALE,
     RESOLVE_MOVE_BASE,
     RESOLVE_MOVE_SCALE,
@@ -71,10 +70,8 @@ def build_market(news_cards: list[NewsCard]) -> MarketState:
         RESOLVE_MOVE_BASE
         + bias_strength * RESOLVE_MOVE_SCALE
         + average_reliability * RELIABILITY_MOVE_SCALE
+        + random.uniform(0.8, 6.4)
     )
-    # Keep settle moves in a tight range so rounds feel intense without huge +$200 drifts.
-    resolve_move = max(10.0, min(15.0, resolve_move))
-    resolve_move = round(resolve_move / PRICE_STEP_DOLLARS) * PRICE_STEP_DOLLARS
     resolve_price = round(max(1000, starting_price + resolve_direction * resolve_move), 2)
     volatility = (
         ROUND_VOLATILITY_BASE
@@ -135,17 +132,14 @@ def advance_market_price(market: MarketState, price_velocity: float, delta_time:
 
     raw_delta = drift + oscillation + forced_dip + forced_spike
 
-    # Hard-cap move size to prevent giant excursions while still looking very volatile.
-    top_cap = max(resolve_delta + 0.5, 10.0)
-    bottom_cap = min(resolve_delta - 1.0, -15.0)
-    bounded_delta = min(top_cap, max(bottom_cap, raw_delta))
+    path_delta = raw_delta
 
     # Snap cleanly into the predetermined settle result near the end of the round.
     if progress > 0.94:
         settle_blend = (progress - 0.94) / 0.06
-        bounded_delta = bounded_delta * (1 - settle_blend) + resolve_delta * settle_blend
+        path_delta = path_delta * (1 - settle_blend) + resolve_delta * settle_blend
 
-    current_price = round(max(1000, market.target_price + bounded_delta), 2)
+    current_price = round(max(1000, market.target_price + path_delta), 2)
     derived_velocity = (current_price - previous) / max(delta_time, 1e-6)
     derived_velocity = max(-MAX_PRICE_VELOCITY, min(MAX_PRICE_VELOCITY, derived_velocity))
     return derived_velocity, current_price
