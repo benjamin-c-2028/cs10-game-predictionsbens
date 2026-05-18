@@ -47,6 +47,7 @@ TEXT_CARET_BLINK_SECONDS = 0.9
 TEXT_CARET_VISIBLE_RATIO = 0.64
 PAGE_SWITCH_SPEED = 7.2
 RESULT_POPUP_DURATION = 2.4
+ISSUE_POPUP_DURATION = 3.2
 CHART_SMOOTHING_WINDOW = 5
 
 
@@ -103,6 +104,9 @@ class BitcoinPredictionGame(arcade.Window):
         self.result_popup_timer = 0.0
         self.result_popup_amount = 0.0
         self.result_popup_side = ""
+        self.issue_popup_title = ""
+        self.issue_popup_message = ""
+        self.issue_popup_timer = 0.0
         self._hover_refresh_needed = True
         self._chart_prices_cache: list[float] = []
         self._text_width_cache: dict[tuple[str, int, bool], float] = {}
@@ -132,6 +136,7 @@ class BitcoinPredictionGame(arcade.Window):
         self.result_popup_timer = 0.0
         self.result_popup_amount = 0.0
         self.result_popup_side = ""
+        self._clear_issue_popup()
         self._chart_prices_cache = []
         self._chart_geometry_cache = None
         self._chart_geometry_dims = None
@@ -235,6 +240,7 @@ class BitcoinPredictionGame(arcade.Window):
         self._draw_news_cards()
         self._draw_transition_overlay()
         self._draw_result_popup()
+        self._draw_issue_popup()
         self._refresh_hovered_key_if_needed()
         self._draw_game_cursor()
         self._draw_page_transition()
@@ -249,6 +255,10 @@ class BitcoinPredictionGame(arcade.Window):
             self.result_popup_timer = max(0.0, self.result_popup_timer - delta_time)
             if self.result_popup_timer <= 0:
                 self.result_popup_kind = None
+        if self.issue_popup_timer > 0.0:
+            self.issue_popup_timer = max(0.0, self.issue_popup_timer - delta_time)
+            if self.issue_popup_timer <= 0.0:
+                self._clear_issue_popup()
         if self.page_transition_progress < 1.0:
             self.page_transition_progress = min(
                 1.0,
@@ -384,22 +394,37 @@ class BitcoinPredictionGame(arcade.Window):
         available_balance = self.demo_balance if self.demo_round_active else self.balance
         if self.position is not None:
             self.status_message = f"{call_name}, you already bought this market. Wait for settlement."
+            self._trigger_issue_popup("Trade Locked", "You already bought this market. Wait for settlement.")
             return
         if self.market.settled:
             self.status_message = f"{call_name}, this market is settled. Start a new market."
+            self._trigger_issue_popup("Market Settled", "This market is settled. Start a new market first.")
             return
         if not self.selected_side:
             self.status_message = f"{call_name}, pick Up or Down first."
+            self._trigger_issue_popup("Pick a Side", "Choose Up or Down before placing your order.")
             return
         if self.selected_amount <= 0:
             self.status_message = f"{call_name}, pick a stake first."
+            self._trigger_issue_popup("Enter an Amount", "Type a dollar amount before you click Buy & Start.")
             return
         if self.selected_amount > available_balance:
-            self.status_message = f"{call_name}, not enough balance for that order amount."
+            self.status_message = (
+                f"{call_name}, not enough balance for that order amount. "
+                f"Available: {self._format_money(available_balance)}."
+            )
+            self._trigger_issue_popup(
+                "Not Enough Cash",
+                (
+                    f"Order amount: {self._format_money(float(self.selected_amount))}. "
+                    f"Available: {self._format_money(available_balance)}."
+                ),
+            )
             return
 
         entry_price = self._contract_price(self.selected_side)
         shares = self.selected_amount / (entry_price / 100)
+        self._clear_issue_popup()
         if self.demo_round_active:
             self.demo_balance -= self.selected_amount
         else:
@@ -488,6 +513,10 @@ class BitcoinPredictionGame(arcade.Window):
         if button != arcade.MOUSE_BUTTON_LEFT:
             return
 
+        if self.issue_popup_timer > 0.0:
+            self._clear_issue_popup()
+            return
+
         self.cursor_click_flash = 1.0
         clicked_key = self._resolve_click_key(x, y)
         self._update_hovered_key(x, y)
@@ -534,6 +563,7 @@ class BitcoinPredictionGame(arcade.Window):
 
         if self.position is not None:
             self.status_message = f"{self._player_call_name()}, trade is locked. Watch the market settle."
+            self._trigger_issue_popup("Trade Locked", "Trade is locked while this market is active.")
             return
 
         if clicked_key in ("side_up", "side_down") and not self.market.settled:
@@ -803,7 +833,7 @@ class BitcoinPredictionGame(arcade.Window):
         arcade.draw_line(0, WINDOW_HEIGHT - 74, WINDOW_WIDTH, WINDOW_HEIGHT - 74, BORDER, 1)
         arcade.draw_text("Polymarket Practice", 70, WINDOW_HEIGHT - 45, TEXT, 24, bold=True, anchor_y="center")
         arcade.draw_text(
-            f"Welcome, {self._player_call_name()}",
+            f"Hello, {self._player_call_name()}",
             WINDOW_WIDTH - 70,
             WINDOW_HEIGHT - 45,
             MUTED,
@@ -919,6 +949,32 @@ class BitcoinPredictionGame(arcade.Window):
 
         arcade.draw_lbwh_rectangle_filled(310, WINDOW_HEIGHT - 58, 560, 36, PANEL_ALT)
         arcade.draw_text("Search simulated markets...", 334, WINDOW_HEIGHT - 41, MUTED_DARK, 13, anchor_y="center")
+        if self.demo_round_active:
+            badge_left = 886
+            badge_bottom = WINDOW_HEIGHT - 58
+            badge_width = 184
+            badge_height = 36
+            arcade.draw_lbwh_rectangle_filled(badge_left, badge_bottom, badge_width, badge_height, (60, 40, 14))
+            arcade.draw_lbwh_rectangle_outline(badge_left, badge_bottom, badge_width, badge_height, ORANGE, 1)
+            arcade.draw_text(
+                "DEMO MODE | FAKE CASH",
+                badge_left + badge_width / 2,
+                badge_bottom + badge_height / 2,
+                TEXT,
+                10,
+                bold=True,
+                anchor_x="center",
+                anchor_y="center",
+            )
+        arcade.draw_text(
+            f"Hello, {self._player_call_name()}",
+            WINDOW_WIDTH - 234,
+            WINDOW_HEIGHT - 45,
+            MUTED,
+            13,
+            anchor_x="right",
+            anchor_y="center",
+        )
 
         self._draw_dashboard_button("Dashboard")
 
@@ -936,6 +992,15 @@ class BitcoinPredictionGame(arcade.Window):
         arcade.draw_line(0, WINDOW_HEIGHT - 74, WINDOW_WIDTH, WINDOW_HEIGHT - 74, BORDER, 1)
         arcade.draw_text("PolyArcade", 70, WINDOW_HEIGHT - 45, TEXT, 24, bold=True, anchor_y="center")
         arcade.draw_text("<>", 40, WINDOW_HEIGHT - 45, TEXT, 18, bold=True, anchor_y="center")
+        arcade.draw_text(
+            f"Hello, {self._player_call_name()}",
+            WINDOW_WIDTH - 234,
+            WINDOW_HEIGHT - 45,
+            MUTED,
+            13,
+            anchor_x="right",
+            anchor_y="center",
+        )
         self._draw_dashboard_button("Back")
 
         left = 96
@@ -1021,6 +1086,34 @@ class BitcoinPredictionGame(arcade.Window):
         elif self.market.settled:
             subtitle = "Settled market"
         arcade.draw_text(subtitle, left + 88, bottom + height - 61, MUTED, 14, bold=True)
+        if self.demo_round_active:
+            demo_banner_left = left + 88
+            demo_banner_bottom = bottom + height - 96
+            demo_banner_width = 540
+            demo_banner_height = 22
+            arcade.draw_lbwh_rectangle_filled(
+                demo_banner_left,
+                demo_banner_bottom,
+                demo_banner_width,
+                demo_banner_height,
+                (60, 40, 14),
+            )
+            arcade.draw_lbwh_rectangle_outline(
+                demo_banner_left,
+                demo_banner_bottom,
+                demo_banner_width,
+                demo_banner_height,
+                ORANGE,
+                1,
+            )
+            arcade.draw_text(
+                "DEMO ROUND ONLY - uses demo cash, no real practice balance impact",
+                demo_banner_left + 10,
+                demo_banner_bottom + 5,
+                TEXT,
+                10,
+                bold=True,
+            )
 
         stats_y = bottom + height - 132
         arcade.draw_text("Price To Beat", left, stats_y, MUTED, 12, bold=True)
@@ -1194,7 +1287,47 @@ class BitcoinPredictionGame(arcade.Window):
         arcade.draw_lbwh_rectangle_outline(left, bottom, width, height, BORDER, 1)
         arcade.draw_line(left, bottom + height - 54, left + width, bottom + height - 54, BORDER, 1)
         arcade.draw_text("Buy", left + 26, bottom + height - 33, TEXT, 18, bold=True, anchor_y="center")
-        arcade.draw_text("One-tap prediction", left + width - 26, bottom + height - 33, MUTED, 12, anchor_x="right", anchor_y="center")
+        ticket_mode_label = "DEMO CASH ONLY" if self.demo_round_active else "One-tap prediction"
+        ticket_mode_color = ORANGE if self.demo_round_active else MUTED
+        arcade.draw_text(
+            ticket_mode_label,
+            left + width - 26,
+            bottom + height - 33,
+            ticket_mode_color,
+            12,
+            bold=self.demo_round_active,
+            anchor_x="right",
+            anchor_y="center",
+        )
+        if self.demo_round_active:
+            demo_ticket_left = left + 26
+            demo_ticket_bottom = bottom + height - 82
+            demo_ticket_width = width - 52
+            demo_ticket_height = 20
+            arcade.draw_lbwh_rectangle_filled(
+                demo_ticket_left,
+                demo_ticket_bottom,
+                demo_ticket_width,
+                demo_ticket_height,
+                (60, 40, 14),
+            )
+            arcade.draw_lbwh_rectangle_outline(
+                demo_ticket_left,
+                demo_ticket_bottom,
+                demo_ticket_width,
+                demo_ticket_height,
+                ORANGE,
+                1,
+            )
+            arcade.draw_text(
+                "DEMO TRADE - fake cash only",
+                demo_ticket_left + demo_ticket_width / 2,
+                demo_ticket_bottom + 5,
+                TEXT,
+                10,
+                bold=True,
+                anchor_x="center",
+            )
 
         up_price = self._contract_price("Up")
         down_price = self._contract_price("Down")
@@ -1300,7 +1433,7 @@ class BitcoinPredictionGame(arcade.Window):
         return bool(self.selected_side) and self.selected_amount <= 0
 
     def _draw_position_summary(self, left: float, top: float, width: float) -> None:
-        balance_label = "Demo Cash" if self.demo_round_active else f"{self._player_call_name()}'s Balance"
+        balance_label = "DEMO CASH (FAKE MONEY)" if self.demo_round_active else f"{self._player_call_name()}'s Balance"
         shown_balance = self.demo_balance if self.demo_round_active else self.balance
         arcade.draw_text(balance_label, left, top, MUTED, 12, bold=True)
         arcade.draw_text(f"${shown_balance:,.2f}", left, top - 28, TEXT, 22, bold=True)
@@ -1524,7 +1657,6 @@ class BitcoinPredictionGame(arcade.Window):
 
         arcade.draw_lbwh_rectangle_filled(left, bottom, popup_width, popup_height, (*PANEL, alpha))
         arcade.draw_lbwh_rectangle_outline(left, bottom, popup_width, popup_height, (*accent, alpha), 2)
-        arcade.draw_line(left, bottom + popup_height - 12, left + popup_width, bottom + popup_height - 12, (*accent, alpha), 2)
         arcade.draw_text(
             title,
             left + 20,
@@ -1548,6 +1680,59 @@ class BitcoinPredictionGame(arcade.Window):
             bottom + 24,
             (*MUTED, alpha),
             int(12 * scale),
+        )
+
+    def _trigger_issue_popup(self, title: str, message: str) -> None:
+        self.issue_popup_title = title
+        self.issue_popup_message = message
+        self.issue_popup_timer = ISSUE_POPUP_DURATION
+
+    def _clear_issue_popup(self) -> None:
+        self.issue_popup_title = ""
+        self.issue_popup_message = ""
+        self.issue_popup_timer = 0.0
+
+    def _draw_issue_popup(self) -> None:
+        if self.issue_popup_timer <= 0.0 or not self.issue_popup_title:
+            return
+
+        fade = min(1.0, self.issue_popup_timer / ISSUE_POPUP_DURATION)
+        overlay_alpha = int(145 * max(0.45, fade))
+        card_alpha = int(242 * max(0.55, fade))
+        text_alpha = int(242 * max(0.7, fade))
+        left = WINDOW_WIDTH / 2 - 320
+        bottom = WINDOW_HEIGHT / 2 - 118
+        width = 640
+        height = 236
+
+        arcade.draw_lbwh_rectangle_filled(0, 0, WINDOW_WIDTH, WINDOW_HEIGHT, (4, 8, 12, overlay_alpha))
+        arcade.draw_lbwh_rectangle_filled(left, bottom, width, height, (*PANEL, card_alpha))
+        arcade.draw_lbwh_rectangle_outline(left, bottom, width, height, (*ORANGE, card_alpha), 2)
+        arcade.draw_lbwh_rectangle_filled(left, bottom + height - 14, width, 14, (*ORANGE, card_alpha))
+        arcade.draw_text(
+            self.issue_popup_title,
+            left + 24,
+            bottom + height - 54,
+            (*TEXT, text_alpha),
+            27,
+            bold=True,
+        )
+        arcade.draw_text(
+            self.issue_popup_message,
+            left + 24,
+            bottom + height - 96,
+            (*TEXT, text_alpha),
+            16,
+            width=590,
+            multiline=True,
+        )
+        arcade.draw_text(
+            "Fix the order details, then try again.",
+            left + 24,
+            bottom + 34,
+            (*MUTED, text_alpha),
+            12,
+            bold=True,
         )
 
     def _draw_page_transition(self) -> None:

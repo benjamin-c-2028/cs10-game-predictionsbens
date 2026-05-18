@@ -146,6 +146,10 @@ def advance_market_price(market: MarketState, price_velocity: float, delta_time:
 
 
 def contract_price(market: MarketState, side: str) -> int:
+    if market.settled:
+        winning_side = "Up" if market.current_price >= market.target_price else "Down"
+        return 100 if side == winning_side else 0
+
     gap = market.current_price - market.target_price
     progress = market.elapsed_seconds / MARKET_DURATION_SECONDS
     expected_move = max(8.0, abs(market.resolve_price - market.target_price) * 0.9)
@@ -153,7 +157,7 @@ def contract_price(market: MarketState, side: str) -> int:
     score = gap / price_scale
     score = max(-6.0, min(6.0, score))
     up_probability = 1 / (1 + math.exp(-score))
-    up_price = max(4, min(96, round(up_probability * 100)))
+    up_price = max(1, min(99, round(up_probability * 100)))
     if side == "Up":
         return up_price
     return 100 - up_price
