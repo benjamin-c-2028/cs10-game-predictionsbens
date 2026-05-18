@@ -50,13 +50,16 @@ def _rebalance_display_reliability(cards: list[NewsCard]) -> list[NewsCard]:
     return normalized_cards
 
 
-def choose_news_cards(news_pool: list[NewsCard]) -> list[NewsCard]:
-    cards = random.sample(news_pool, 3)
+def choose_news_cards(news_pool: list[NewsCard], count: int = 3) -> list[NewsCard]:
+    if not news_pool:
+        return []
+    sample_size = max(1, min(count, len(news_pool)))
+    cards = random.sample(news_pool, sample_size)
     for _ in range(12):
         average_bias = sum(card.price_bias for card in cards) / len(cards)
         if abs(average_bias) >= 0.14:
             return _rebalance_display_reliability(cards)
-        cards = random.sample(news_pool, 3)
+        cards = random.sample(news_pool, sample_size)
     return _rebalance_display_reliability(cards)
 
 
