@@ -41,6 +41,7 @@ from .constants import (
     STARTING_BALANCE,
     TEXT,
     WHITE,
+    WIN_BALANCE_TARGET,
     WINDOW_HEIGHT,
     WINDOW_TITLE,
     WINDOW_WIDTH,
@@ -105,6 +106,7 @@ class BitcoinPredictionGame(arcade.Window):
         self.insider_tip_confidence = 0
         self.insider_suspicion = 0.0
         self.game_over_active = False
+        self.game_won_active = False
         self.selected_side = "Up"
         self.selected_amount = 0
         self.amount_input_text = ""
@@ -341,6 +343,7 @@ class BitcoinPredictionGame(arcade.Window):
             self._draw_shop()
             self._draw_issue_popup()
             self._draw_game_over_overlay()
+            self._draw_game_win_overlay()
             self._refresh_hovered_key_if_needed()
             self._draw_game_cursor()
             self._draw_page_transition()
@@ -348,6 +351,7 @@ class BitcoinPredictionGame(arcade.Window):
         if self.dashboard_active:
             self._draw_dashboard()
             self._draw_game_over_overlay()
+            self._draw_game_win_overlay()
             self._refresh_hovered_key_if_needed()
             self._draw_game_cursor()
             self._draw_page_transition()
@@ -361,6 +365,7 @@ class BitcoinPredictionGame(arcade.Window):
         self._draw_result_popup()
         self._draw_issue_popup()
         self._draw_game_over_overlay()
+        self._draw_game_win_overlay()
         self._refresh_hovered_key_if_needed()
         self._draw_game_cursor()
         self._draw_page_transition()
@@ -811,7 +816,10 @@ class BitcoinPredictionGame(arcade.Window):
         self._check_game_loss_state()
 
     def _check_game_loss_state(self) -> None:
-        if self.demo_round_active or self.game_over_active:
+        if self.demo_round_active or self.game_over_active or self.game_won_active:
+            return
+        if self.balance >= WIN_BALANCE_TARGET:
+            self._trigger_game_win()
             return
         if self.balance >= GAME_OVER_BALANCE_THRESHOLD:
             return
@@ -836,9 +844,24 @@ class BitcoinPredictionGame(arcade.Window):
 
         self._trigger_game_over()
 
+    def _trigger_game_win(self) -> None:
+        call_name = self._player_call_name()
+        self.game_won_active = True
+        self.market.active = False
+        self.market.settled = True
+        self.position = None
+        self.amount_input_active = False
+        self.dashboard_active = False
+        self.shop_active = False
+        self.status_message = (
+            f"{call_name}, you reached {self._format_money(float(WIN_BALANCE_TARGET))} and won the run."
+        )
+        self._hover_refresh_needed = True
+
     def _trigger_game_over(self) -> None:
         call_name = self._player_call_name()
         self.game_over_active = True
+        self.game_won_active = False
         self.market.active = False
         self.market.settled = True
         self.position = None
@@ -853,6 +876,7 @@ class BitcoinPredictionGame(arcade.Window):
 
     def _restart_after_game_over(self) -> None:
         self.game_over_active = False
+        self.game_won_active = False
         self.balance = STARTING_BALANCE
         self.demo_balance = STARTING_BALANCE
         self.unlocked_news_cards = 1
@@ -1025,7 +1049,7 @@ class BitcoinPredictionGame(arcade.Window):
                 self._hover_refresh_needed = True
             return
 
-        if self.game_over_active:
+        if self.game_over_active or self.game_won_active:
             if clicked_key == "restart_game":
                 self._restart_after_game_over()
             return
@@ -1471,37 +1495,14 @@ class BitcoinPredictionGame(arcade.Window):
 
         arcade.draw_lbwh_rectangle_filled(310, WINDOW_HEIGHT - 58, 560, 36, PANEL_ALT)
         arcade.draw_text("Search simulated markets...", 334, WINDOW_HEIGHT - 41, MUTED_DARK, 13, anchor_y="center")
-        if self.demo_round_active:
-            badge_left = 886
-            badge_bottom = WINDOW_HEIGHT - 58
-            badge_width = 184
-            badge_height = 36
-            arcade.draw_lbwh_rectangle_filled(badge_left, badge_bottom, badge_width, badge_height, (60, 40, 14))
-            arcade.draw_lbwh_rectangle_outline(badge_left, badge_bottom, badge_width, badge_height, ORANGE, 1)
-            arcade.draw_text(
-                "DEMO MODE | FAKE CASH",
-                badge_left + badge_width / 2,
-                badge_bottom + badge_height / 2,
-                TEXT,
-                10,
-                bold=True,
-                anchor_x="center",
-                anchor_y="center",
-            )
-        hello_y = WINDOW_HEIGHT - 45
-        hello_anchor_y = "center"
-        if self.demo_round_active:
-            # Keep the name clear of the demo badge by pinning it near the top edge.
-            hello_y = WINDOW_HEIGHT - 2
-            hello_anchor_y = "top"
         arcade.draw_text(
             f"Hello, {self._player_call_name()}",
             WINDOW_WIDTH - 392,
-            hello_y,
+            WINDOW_HEIGHT - 45,
             MUTED,
             13,
             anchor_x="right",
-            anchor_y=hello_anchor_y,
+            anchor_y="center",
         )
 
         self._draw_shop_button("Shop")
@@ -1708,6 +1709,7 @@ class BitcoinPredictionGame(arcade.Window):
             f"Starter slot is always the highest-reliability article (80%+).",
             f"Round cap: 1 starter + up to {max_purchases} purchased articles.",
             f"Drop below {self._format_money(float(GAME_OVER_BALANCE_THRESHOLD))} and you lose the run.",
+            f"Reach {self._format_money(float(WIN_BALANCE_TARGET))} to win the run.",
             tier_line,
         ]
         for index, line in enumerate(helper_lines):
@@ -1907,10 +1909,10 @@ class BitcoinPredictionGame(arcade.Window):
         )
         insider_buy_zone = ClickZone(
             "shop_buy_insider_ear",
-            insider_card_left + insider_card_width - 246,
-            insider_card_bottom + 12,
-            218,
-            48,
+            insider_card_left + insider_card_width - 296,
+            insider_card_bottom + 30,
+            260,
+            58,
         )
         self.click_zones.append(insider_buy_zone)
         insider_buy_color = PANEL_SOFT if insider_disabled else GREEN_DARK
@@ -2959,6 +2961,65 @@ class BitcoinPredictionGame(arcade.Window):
         )
         arcade.draw_text(
             "Restart Practice",
+            restart_zone.center_x,
+            restart_zone.center_y + 2,
+            TEXT,
+            20,
+            bold=True,
+            anchor_x="center",
+            anchor_y="center",
+        )
+
+    def _draw_game_win_overlay(self) -> None:
+        if not self.game_won_active:
+            return
+
+        overlay_alpha = 172
+        left = WINDOW_WIDTH / 2 - 360
+        bottom = WINDOW_HEIGHT / 2 - 180
+        width = 720
+        height = 360
+        arcade.draw_lbwh_rectangle_filled(0, 0, WINDOW_WIDTH, WINDOW_HEIGHT, (4, 8, 12, overlay_alpha))
+        arcade.draw_lbwh_rectangle_filled(left, bottom, width, height, PANEL)
+        arcade.draw_lbwh_rectangle_outline(left, bottom, width, height, GREEN, 2)
+        arcade.draw_lbwh_rectangle_filled(left, bottom + height - 14, width, 14, GREEN)
+        arcade.draw_text("YOU WIN", left + 28, bottom + height - 62, GREEN, 38, bold=True)
+        arcade.draw_text(
+            f"You reached {self._format_money(float(WIN_BALANCE_TARGET))} practice cash.",
+            left + 30,
+            bottom + height - 108,
+            TEXT,
+            18,
+            bold=True,
+        )
+        arcade.draw_text(
+            "Restart to run it again from $1,000.",
+            left + 30,
+            bottom + height - 142,
+            MUTED,
+            14,
+        )
+
+        restart_zone = ClickZone("restart_game", left + width / 2 - 170, bottom + 44, 340, 62)
+        self.click_zones.append(restart_zone)
+        restart_color = BLUE if self.hovered_key == "restart_game" else GREEN_DARK
+        arcade.draw_lbwh_rectangle_filled(
+            restart_zone.left,
+            restart_zone.bottom,
+            restart_zone.width,
+            restart_zone.height,
+            restart_color,
+        )
+        arcade.draw_lbwh_rectangle_outline(
+            restart_zone.left,
+            restart_zone.bottom,
+            restart_zone.width,
+            restart_zone.height,
+            BORDER,
+            1,
+        )
+        arcade.draw_text(
+            "Play Again",
             restart_zone.center_x,
             restart_zone.center_y + 2,
             TEXT,
