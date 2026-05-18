@@ -389,6 +389,55 @@ class BitcoinPredictionGame(arcade.Window):
             ),
         )
 
+    def _available_balance(self) -> float:
+        return self.demo_balance if self.demo_round_active else self.balance
+
+    def _all_in(self) -> None:
+        call_name = self._player_call_name()
+        if self.position is not None:
+            self.status_message = f"{call_name}, trade is locked. Watch the market settle."
+            self._trigger_issue_popup("Trade Locked", "Trade is locked while this market is active.")
+            return
+        if self.market.active:
+            self.status_message = f"{call_name}, market is already running."
+            self._trigger_issue_popup("Market Active", "The round is already live. Wait for settlement first.")
+            return
+        if self.market.settled:
+            self.status_message = f"{call_name}, this market is settled. Start a new market."
+            self._trigger_issue_popup("Market Settled", "Start a new market before going all-in.")
+            return
+        if not self.selected_side:
+            self.status_message = f"{call_name}, pick Up or Down first."
+            self._trigger_issue_popup("Pick a Side", "Choose Up or Down before going all-in.")
+            return
+
+        stake = int(self._available_balance())
+        if stake <= 0:
+            self.status_message = f"{call_name}, no cash left to go all-in."
+            self._trigger_issue_popup("No Cash Available", "Your available cash is under $1, so all-in is unavailable.")
+            return
+
+        self.selected_amount = stake
+        self.amount_input_text = str(stake)
+        self.amount_input_active = False
+        if self.demo_round_active:
+            self.demo_amount_picked = True
+        self._buy_position()
+
+    def _skip_day(self) -> None:
+        call_name = self._player_call_name()
+        if self.position is not None or self.market.active:
+            self.status_message = f"{call_name}, you cannot skip while a trade is active."
+            self._trigger_issue_popup("Trade Locked", "Wait for this market to settle before skipping the day.")
+            return
+
+        self.market = self._new_market(demo_mode=self.demo_round_active)
+        if self.demo_round_active:
+            self.status_message = f"{call_name}, demo day skipped. New demo market loaded."
+        else:
+            self.status_message = f"{call_name}, day skipped. New market loaded."
+        self._hover_refresh_needed = True
+
     def _buy_position(self) -> None:
         call_name = self._player_call_name()
         available_balance = self.demo_balance if self.demo_round_active else self.balance
@@ -559,6 +608,14 @@ class BitcoinPredictionGame(arcade.Window):
             else:
                 self.market = self._new_market()
             self._hover_refresh_needed = True
+            return
+
+        if clicked_key == "all_in":
+            self._all_in()
+            return
+
+        if clicked_key == "skip_day":
+            self._skip_day()
             return
 
         if self.position is not None:
@@ -1339,6 +1396,67 @@ class BitcoinPredictionGame(arcade.Window):
 
         arcade.draw_line(left + 26, bottom + height - 320, left + width - 26, bottom + height - 320, BORDER, 1)
         self._draw_position_summary(left + 26, bottom + height - 338, width - 52)
+
+        quick_gap = 10
+        quick_button_width = (width - 52 - quick_gap) / 2
+        quick_button_bottom = bottom + 92
+        all_in_zone = ClickZone("all_in", left + 26, quick_button_bottom, quick_button_width, 40)
+        skip_zone = ClickZone("skip_day", left + 26 + quick_button_width + quick_gap, quick_button_bottom, quick_button_width, 40)
+        self.click_zones.append(all_in_zone)
+        self.click_zones.append(skip_zone)
+
+        all_in_disabled = (
+            self.position is not None
+            or self.market.active
+            or self.market.settled
+            or int(self._available_balance()) <= 0
+        )
+        skip_disabled = self.position is not None or self.market.active
+
+        all_in_color = PANEL_SOFT if all_in_disabled else GREEN_DARK
+        if self.hovered_key == "all_in" and not all_in_disabled:
+            all_in_color = GREEN
+        arcade.draw_lbwh_rectangle_filled(
+            all_in_zone.left,
+            all_in_zone.bottom,
+            all_in_zone.width,
+            all_in_zone.height,
+            all_in_color,
+        )
+        arcade.draw_lbwh_rectangle_outline(
+            all_in_zone.left,
+            all_in_zone.bottom,
+            all_in_zone.width,
+            all_in_zone.height,
+            BORDER,
+            1,
+        )
+        arcade.draw_text(
+            "All In",
+            all_in_zone.center_x,
+            all_in_zone.center_y + 1,
+            TEXT if not all_in_disabled else MUTED,
+            14,
+            bold=True,
+            anchor_x="center",
+            anchor_y="center",
+        )
+
+        skip_color = PANEL_SOFT if skip_disabled else PANEL_ALT
+        if self.hovered_key == "skip_day" and not skip_disabled:
+            skip_color = BLUE
+        arcade.draw_lbwh_rectangle_filled(skip_zone.left, skip_zone.bottom, skip_zone.width, skip_zone.height, skip_color)
+        arcade.draw_lbwh_rectangle_outline(skip_zone.left, skip_zone.bottom, skip_zone.width, skip_zone.height, BORDER, 1)
+        arcade.draw_text(
+            "Skip Day",
+            skip_zone.center_x,
+            skip_zone.center_y + 1,
+            TEXT if not skip_disabled else MUTED,
+            14,
+            bold=True,
+            anchor_x="center",
+            anchor_y="center",
+        )
 
         buy_key = "new_market" if self.market.settled else "buy"
         buy_zone = ClickZone(buy_key, left + 26, bottom + 26, width - 52, 56)
