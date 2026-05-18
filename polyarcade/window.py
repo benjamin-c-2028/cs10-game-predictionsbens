@@ -402,6 +402,13 @@ class BitcoinPredictionGame(arcade.Window):
 
     def _all_in(self) -> None:
         call_name = self._player_call_name()
+        if self.demo_round_active:
+            self.status_message = f"{call_name}, all-in is disabled in demo. Type a demo amount instead."
+            self._trigger_issue_popup(
+                "Demo Mode",
+                "All In is turned off during the guided demo. Type an amount manually.",
+            )
+            return
         if self.position is not None:
             self.status_message = f"{call_name}, trade is locked. Watch the market settle."
             self._trigger_issue_popup("Trade Locked", "Trade is locked while this market is active.")
@@ -434,6 +441,13 @@ class BitcoinPredictionGame(arcade.Window):
 
     def _skip_day(self) -> None:
         call_name = self._player_call_name()
+        if self.demo_round_active:
+            self.status_message = f"{call_name}, skip is disabled in demo. Complete the guided round first."
+            self._trigger_issue_popup(
+                "Demo Mode",
+                "Skip is turned off during the guided demo. Complete this demo round first.",
+            )
+            return
         if self.position is not None or self.market.active:
             self.status_message = f"{call_name}, you cannot skip while a trade is active."
             self._trigger_issue_popup("Trade Locked", "Wait for this market to settle before skipping the day.")
@@ -1425,12 +1439,21 @@ class BitcoinPredictionGame(arcade.Window):
         self.click_zones.append(skip_zone)
 
         all_in_disabled = (
-            self.position is not None
+            self.demo_round_active
+            or self.position is not None
             or self.market.active
             or self.market.settled
             or int(self._available_balance()) <= 0
         )
-        skip_disabled = self.position is not None or self.market.active or self.skips_remaining <= 0
+        skip_disabled = (
+            self.demo_round_active
+            or self.position is not None
+            or self.market.active
+            or self.skips_remaining <= 0
+        )
+
+        all_in_label = "All In Off" if self.demo_round_active else "All In"
+        skip_label = "Skip Off" if self.demo_round_active else f"Skip ({self.skips_remaining})"
 
         all_in_color = ALL_IN_GOLD_DISABLED if all_in_disabled else ALL_IN_GOLD
         if self.hovered_key == "all_in" and not all_in_disabled:
@@ -1451,7 +1474,7 @@ class BitcoinPredictionGame(arcade.Window):
             1,
         )
         arcade.draw_text(
-            "All In",
+            all_in_label,
             all_in_zone.center_x,
             all_in_zone.center_y + 1,
             TEXT if not all_in_disabled else MUTED,
@@ -1467,7 +1490,7 @@ class BitcoinPredictionGame(arcade.Window):
         arcade.draw_lbwh_rectangle_filled(skip_zone.left, skip_zone.bottom, skip_zone.width, skip_zone.height, skip_color)
         arcade.draw_lbwh_rectangle_outline(skip_zone.left, skip_zone.bottom, skip_zone.width, skip_zone.height, BORDER, 1)
         arcade.draw_text(
-            f"Skip ({self.skips_remaining})",
+            skip_label,
             skip_zone.center_x,
             skip_zone.center_y + 1,
             TEXT if not skip_disabled else MUTED,
