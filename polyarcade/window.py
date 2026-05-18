@@ -181,6 +181,8 @@ class BitcoinPredictionGame(arcade.Window):
         return max(0, self._max_news_articles_this_round() - 1)
 
     def _next_article_price(self) -> int | None:
+        if self.news_articles_purchased >= self._max_news_purchases_this_round():
+            return None
         if self.news_articles_purchased >= len(NEWS_ARTICLE_SHOP_PRICES):
             return None
         return NEWS_ARTICLE_SHOP_PRICES[self.news_articles_purchased]
@@ -1691,12 +1693,22 @@ class BitcoinPredictionGame(arcade.Window):
             anchor_y="center",
         )
 
+        active_price_tiers = NEWS_ARTICLE_SHOP_PRICES[:max_purchases]
+        if not active_price_tiers:
+            tier_line = "Price tiers: no article purchases available this round."
+        elif len(active_price_tiers) == 1:
+            tier_line = f"Price tier: {self._format_money(float(active_price_tiers[0]))}."
+        else:
+            tier_line = "Price tiers: " + ", then ".join(
+                self._format_money(float(price)) for price in active_price_tiers
+            ) + "."
+
         helper_lines = [
             f"Each buy unlocks one new article slot for this round only.",
             f"Starter slot is always the highest-reliability article (80%+).",
             f"Round cap: 1 starter + up to {max_purchases} purchased articles.",
             f"Drop below {self._format_money(float(GAME_OVER_BALANCE_THRESHOLD))} and you lose the run.",
-            "Price tiers: $1,000, then $2,000, then $3,000.",
+            tier_line,
         ]
         for index, line in enumerate(helper_lines):
             arcade.draw_text(line, panel_left + 34, panel_bottom + panel_height - 346 - index * 26, MUTED, 13)
