@@ -96,6 +96,7 @@ class BitcoinPredictionGame(arcade.Window):
         self.position: Position | None = None
         self.trade_history: list[TradeRecord] = []
         self.dashboard_active = False
+        self.shop_active = False
         self.demo_round_active = False
         self.demo_round_complete = False
         self.demo_side_picked = False
@@ -136,6 +137,8 @@ class BitcoinPredictionGame(arcade.Window):
             return "onboarding"
         if self.tutorial_active:
             return "tutorial"
+        if self.shop_active:
+            return "shop"
         if self.dashboard_active:
             return "dashboard"
         return "market"
@@ -195,8 +198,12 @@ class BitcoinPredictionGame(arcade.Window):
                 choose_news_cards(ALL_NEWS, count=MAX_PLAYER_NEWS_ARTICLES)
             )
 
-        self.unlocked_news_cards = 1
-        self.news_articles_purchased = 0
+        if demo_mode:
+            self.unlocked_news_cards = min(3, self._max_news_articles_this_round())
+            self.news_articles_purchased = max(0, self.unlocked_news_cards - 1)
+        else:
+            self.unlocked_news_cards = 1
+            self.news_articles_purchased = 0
 
         call_name = self._player_call_name()
         if demo_mode:
@@ -266,6 +273,13 @@ class BitcoinPredictionGame(arcade.Window):
             self._draw_game_cursor()
             self._draw_page_transition()
             return
+        if self.shop_active:
+            self._draw_shop()
+            self._draw_issue_popup()
+            self._refresh_hovered_key_if_needed()
+            self._draw_game_cursor()
+            self._draw_page_transition()
+            return
         if self.dashboard_active:
             self._draw_dashboard()
             self._refresh_hovered_key_if_needed()
@@ -307,7 +321,7 @@ class BitcoinPredictionGame(arcade.Window):
         if self.onboarding_active or self.tutorial_active:
             return
 
-        if not self.dashboard_active:
+        if not self.dashboard_active and not self.shop_active:
             self.market_transition = min(
                 1.0,
                 self.market_transition + animation_delta * MARKET_TRANSITION_SPEED,
@@ -706,6 +720,15 @@ class BitcoinPredictionGame(arcade.Window):
 
         if clicked_key == "dashboard_toggle":
             self.dashboard_active = not self.dashboard_active
+            if self.dashboard_active:
+                self.shop_active = False
+            self._hover_refresh_needed = True
+            return
+
+        if clicked_key == "shop_toggle":
+            self.shop_active = not self.shop_active
+            if self.shop_active:
+                self.dashboard_active = False
             self._hover_refresh_needed = True
             return
 
@@ -1144,7 +1167,7 @@ class BitcoinPredictionGame(arcade.Window):
             )
         arcade.draw_text(
             f"Hello, {self._player_call_name()}",
-            WINDOW_WIDTH - 234,
+            WINDOW_WIDTH - 392,
             WINDOW_HEIGHT - 45,
             MUTED,
             13,
@@ -1152,12 +1175,21 @@ class BitcoinPredictionGame(arcade.Window):
             anchor_y="center",
         )
 
+        self._draw_shop_button("Shop")
         self._draw_dashboard_button("Dashboard")
 
     def _draw_dashboard_button(self, label: str) -> None:
         zone = ClickZone("dashboard_toggle", WINDOW_WIDTH - 216, WINDOW_HEIGHT - 62, 146, 38)
         self.click_zones.append(zone)
         button_color = BLUE if self.hovered_key == "dashboard_toggle" else PANEL_SOFT
+        arcade.draw_lbwh_rectangle_filled(zone.left, zone.bottom, zone.width, zone.height, button_color)
+        arcade.draw_lbwh_rectangle_outline(zone.left, zone.bottom, zone.width, zone.height, BORDER, 1)
+        arcade.draw_text(label, zone.center_x, zone.center_y + 1, TEXT, 14, bold=True, anchor_x="center", anchor_y="center")
+
+    def _draw_shop_button(self, label: str) -> None:
+        zone = ClickZone("shop_toggle", WINDOW_WIDTH - 374, WINDOW_HEIGHT - 62, 146, 38)
+        self.click_zones.append(zone)
+        button_color = BLUE if self.hovered_key == "shop_toggle" else PANEL_SOFT
         arcade.draw_lbwh_rectangle_filled(zone.left, zone.bottom, zone.width, zone.height, button_color)
         arcade.draw_lbwh_rectangle_outline(zone.left, zone.bottom, zone.width, zone.height, BORDER, 1)
         arcade.draw_text(label, zone.center_x, zone.center_y + 1, TEXT, 14, bold=True, anchor_x="center", anchor_y="center")
@@ -1170,13 +1202,14 @@ class BitcoinPredictionGame(arcade.Window):
         arcade.draw_text("<>", 40, WINDOW_HEIGHT - 45, TEXT, 18, bold=True, anchor_y="center")
         arcade.draw_text(
             f"Hello, {self._player_call_name()}",
-            WINDOW_WIDTH - 234,
+            WINDOW_WIDTH - 392,
             WINDOW_HEIGHT - 45,
             MUTED,
             13,
             anchor_x="right",
             anchor_y="center",
         )
+        self._draw_shop_button("Shop")
         self._draw_dashboard_button("Back")
 
         left = 96
@@ -1241,6 +1274,89 @@ class BitcoinPredictionGame(arcade.Window):
             arcade.draw_text(trade.result, table_left + 760, row_y, pnl_color, 13, bold=True)
             arcade.draw_text(self._format_delta(trade.profit_loss), table_left + 900, row_y, pnl_color, 13, bold=True)
             arcade.draw_text(self._format_money(trade.balance_after), table_left + 1040, row_y, TEXT, 13)
+
+    def _draw_shop(self) -> None:
+        arcade.draw_lbwh_rectangle_filled(0, 0, WINDOW_WIDTH, WINDOW_HEIGHT, BACKGROUND)
+        arcade.draw_lbwh_rectangle_filled(0, WINDOW_HEIGHT - 74, WINDOW_WIDTH, 74, HEADER)
+        arcade.draw_line(0, WINDOW_HEIGHT - 74, WINDOW_WIDTH, WINDOW_HEIGHT - 74, BORDER, 1)
+        arcade.draw_text("PolyArcade", 70, WINDOW_HEIGHT - 45, TEXT, 24, bold=True, anchor_y="center")
+        arcade.draw_text("<>", 40, WINDOW_HEIGHT - 45, TEXT, 18, bold=True, anchor_y="center")
+        arcade.draw_text(
+            f"Hello, {self._player_call_name()}",
+            WINDOW_WIDTH - 392,
+            WINDOW_HEIGHT - 45,
+            MUTED,
+            13,
+            anchor_x="right",
+            anchor_y="center",
+        )
+        self._draw_shop_button("Back")
+        self._draw_dashboard_button("Dashboard")
+
+        panel_left = 96
+        panel_bottom = 102
+        panel_width = WINDOW_WIDTH - 192
+        panel_height = WINDOW_HEIGHT - 226
+        arcade.draw_lbwh_rectangle_filled(panel_left, panel_bottom, panel_width, panel_height, PANEL)
+        arcade.draw_lbwh_rectangle_outline(panel_left, panel_bottom, panel_width, panel_height, BORDER, 1)
+        arcade.draw_lbwh_rectangle_filled(panel_left, panel_bottom + panel_height - 8, panel_width, 8, BLUE)
+
+        arcade.draw_text("News Shop", panel_left + 32, panel_bottom + panel_height - 62, TEXT, 34, bold=True)
+        mode_text = "Demo shop bundle: 3 articles already unlocked." if self.demo_round_active else "Buy extra news articles for more market clues."
+        arcade.draw_text(mode_text, panel_left + 34, panel_bottom + panel_height - 96, MUTED, 14)
+
+        max_articles = self._max_news_articles_this_round()
+        max_purchases = self._max_news_purchases_this_round()
+        unlocked = min(self.unlocked_news_cards, max_articles)
+        current_balance = self._available_balance()
+        shop_disabled = (
+            self.news_articles_purchased >= max_purchases
+            or unlocked >= max_articles
+            or current_balance < NEWS_ARTICLE_SHOP_PRICE
+        )
+
+        stat_cards = [
+            ("Cash Available", self._format_money(current_balance), TEXT),
+            ("Unlocked Articles", f"{unlocked}/{max_articles}", TEXT),
+            ("Purchases Used", f"{self.news_articles_purchased}/{max_purchases}", TEXT),
+        ]
+        for index, (label, value, value_color) in enumerate(stat_cards):
+            card_left = panel_left + 32 + index * 296
+            arcade.draw_lbwh_rectangle_filled(card_left, panel_bottom + panel_height - 212, 268, 98, PANEL_ALT)
+            arcade.draw_lbwh_rectangle_outline(card_left, panel_bottom + panel_height - 212, 268, 98, BORDER, 1)
+            arcade.draw_text(label, card_left + 16, panel_bottom + panel_height - 154, MUTED, 12, bold=True)
+            arcade.draw_text(value, card_left + 16, panel_bottom + panel_height - 190, value_color, 24, bold=True)
+
+        buy_zone = ClickZone("shop_buy_article", panel_left + 32, panel_bottom + panel_height - 290, 420, 62)
+        self.click_zones.append(buy_zone)
+        buy_color = PANEL_SOFT if shop_disabled else GREEN_DARK
+        if self.hovered_key == "shop_buy_article" and not shop_disabled:
+            buy_color = GREEN
+        arcade.draw_lbwh_rectangle_filled(buy_zone.left, buy_zone.bottom, buy_zone.width, buy_zone.height, buy_color)
+        arcade.draw_lbwh_rectangle_outline(buy_zone.left, buy_zone.bottom, buy_zone.width, buy_zone.height, BORDER, 1)
+        buy_label = f"Buy Article (${NEWS_ARTICLE_SHOP_PRICE})"
+        if self.news_articles_purchased >= max_purchases or unlocked >= max_articles:
+            buy_label = "Article Limit Reached"
+        elif current_balance < NEWS_ARTICLE_SHOP_PRICE:
+            buy_label = "Not Enough Cash"
+        arcade.draw_text(
+            buy_label,
+            buy_zone.center_x,
+            buy_zone.center_y + 2,
+            TEXT if not shop_disabled else MUTED,
+            20,
+            bold=True,
+            anchor_x="center",
+            anchor_y="center",
+        )
+
+        helper_lines = [
+            f"Each buy unlocks one new article slot for this round only.",
+            f"Starter slot is always the highest-reliability article (80%+).",
+            f"Round cap: 1 starter + up to {max_purchases} purchased articles.",
+        ]
+        for index, line in enumerate(helper_lines):
+            arcade.draw_text(line, panel_left + 34, panel_bottom + panel_height - 346 - index * 26, MUTED, 13)
 
     def _draw_market(self) -> None:
         left = 70
@@ -1725,34 +1841,11 @@ class BitcoinPredictionGame(arcade.Window):
         card_width = (total_width - gap * (max_articles - 1)) / max(1, max_articles)
 
         arcade.draw_text("Bitcoin articles", left, bottom + card_height + 22, TEXT, 17, bold=True)
-        article_note = "Starter article is 80%+ reliability. Buy more in the shop for extra context."
+        article_note = "Starter article is 80%+ reliability. Open Shop to unlock more context."
         arcade.draw_text(article_note, left + 180, bottom + card_height + 23, MUTED, 12)
 
         unlocked = min(self.unlocked_news_cards, max_articles)
         max_purchases = self._max_news_purchases_this_round()
-        shop_zone = ClickZone("shop_buy_article", left + total_width - 252, bottom + card_height - 4, 252, 32)
-        self.click_zones.append(shop_zone)
-        shop_disabled = unlocked >= max_articles or self.news_articles_purchased >= max_purchases
-        shop_color = PANEL_SOFT if shop_disabled else BLUE
-        if self.hovered_key == "shop_buy_article" and not shop_disabled:
-            shop_color = self._boost_rgb(BLUE, 22)
-        arcade.draw_lbwh_rectangle_filled(shop_zone.left, shop_zone.bottom, shop_zone.width, shop_zone.height, shop_color)
-        arcade.draw_lbwh_rectangle_outline(shop_zone.left, shop_zone.bottom, shop_zone.width, shop_zone.height, BORDER, 1)
-        shop_label = f"Shop: Buy Article (${NEWS_ARTICLE_SHOP_PRICE})"
-        if self.news_articles_purchased >= max_purchases:
-            shop_label = "Shop: Purchase Limit Reached"
-        elif unlocked >= max_articles:
-            shop_label = "Shop: Max Articles Reached"
-        arcade.draw_text(
-            shop_label,
-            shop_zone.center_x,
-            shop_zone.center_y + 1,
-            TEXT if not shop_disabled else MUTED,
-            11,
-            bold=True,
-            anchor_x="center",
-            anchor_y="center",
-        )
         arcade.draw_text(
             f"Unlocked: {unlocked}/{max_articles}",
             left + total_width - 10,
@@ -1766,6 +1859,15 @@ class BitcoinPredictionGame(arcade.Window):
             f"Bought: {self.news_articles_purchased}/{max_purchases}",
             left + total_width - 10,
             bottom + card_height + 10,
+            MUTED_DARK,
+            10,
+            bold=True,
+            anchor_x="right",
+        )
+        arcade.draw_text(
+            "Use the Shop menu to buy article slots",
+            left + total_width - 10,
+            bottom + card_height - 6,
             MUTED_DARK,
             10,
             bold=True,
