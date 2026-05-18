@@ -15,12 +15,15 @@ from .constants import (
     HEADER,
     MARKET_DURATION_SECONDS,
     MARKET_TRANSITION_SPEED,
+    MAX_NEWS_ARTICLE_PURCHASES,
+    MAX_PLAYER_NEWS_ARTICLES,
     MAX_CHART_RENDER_POINTS,
     MAX_AMOUNT_INPUT_CHARS,
     MAX_FRAME_SECONDS,
     MAX_FULL_NAME_CHARS,
     MUTED,
     MUTED_DARK,
+    NEWS_ARTICLE_SHOP_PRICE,
     ORANGE,
     PANEL,
     PANEL_ALT,
@@ -83,6 +86,8 @@ class BitcoinPredictionGame(arcade.Window):
         self.player_full_name = ""
         self.balance = STARTING_BALANCE
         self.demo_balance = STARTING_BALANCE
+        self.unlocked_news_cards = 1
+        self.news_articles_purchased = 0
         self.skips_remaining = SKIP_LIMIT
         self.selected_side = "Up"
         self.selected_amount = 0
@@ -135,6 +140,18 @@ class BitcoinPredictionGame(arcade.Window):
             return "dashboard"
         return "market"
 
+    def _starter_first_news_cards(self, cards: list[NewsCard]) -> list[NewsCard]:
+        if not cards:
+            return []
+
+        starter_index = max(range(len(cards)), key=lambda index: cards[index].reliability)
+        starter = cards[starter_index]
+        remaining = [card for index, card in enumerate(cards) if index != starter_index]
+        return [starter, *remaining]
+
+    def _max_news_articles_this_round(self) -> int:
+        return min(MAX_PLAYER_NEWS_ARTICLES, len(self.news_cards))
+
     def _new_market(self, demo_mode: bool = False) -> MarketState:
         self.tick_accumulator = 0.0
         self.price_velocity = 0.0
@@ -156,7 +173,7 @@ class BitcoinPredictionGame(arcade.Window):
             self.selected_amount = 0
             self.amount_input_text = ""
             self.amount_input_active = False
-            self.news_cards = choose_news_cards(DEMO_NEWS_CARDS)
+            self.news_cards = self._starter_first_news_cards(choose_news_cards(DEMO_NEWS_CARDS))
             self.demo_round_complete = False
             self.demo_side_picked = False
             self.demo_amount_picked = False
@@ -165,7 +182,9 @@ class BitcoinPredictionGame(arcade.Window):
             self.selected_amount = 0
             self.amount_input_text = ""
             self.amount_input_active = False
-            self.news_cards = choose_news_cards(ALL_NEWS)
+            self.news_cards = self._starter_first_news_cards(choose_news_cards(ALL_NEWS))
+
+        self.unlocked_news_cards = 1
 
         call_name = self._player_call_name()
         if demo_mode:
@@ -471,6 +490,46 @@ class BitcoinPredictionGame(arcade.Window):
             )
         self._hover_refresh_needed = True
 
+    def _buy_news_article(self) -> None:
+        call_name = self._player_call_name()
+        max_articles = self._max_news_articles_this_round()
+        if self.unlocked_news_cards >= max_articles:
+            self.status_message = (
+                f"{call_name}, article cap reached. "
+                f"You can only hold {max_articles} articles this round."
+            )
+            self._trigger_issue_popup(
+                "Article Limit Reached",
+                f"You already unlocked {self.unlocked_news_cards} of {max_articles} articles.",
+            )
+            return
+
+        available_balance = self._available_balance()
+        if available_balance < NEWS_ARTICLE_SHOP_PRICE:
+            self.status_message = (
+                f"{call_name}, not enough cash for another article. "
+                f"Need {self._format_money(float(NEWS_ARTICLE_SHOP_PRICE))}."
+            )
+            self._trigger_issue_popup(
+                "Not Enough Cash",
+                (
+                    f"Article cost: {self._format_money(float(NEWS_ARTICLE_SHOP_PRICE))}. "
+                    f"Available: {self._format_money(available_balance)}."
+                ),
+            )
+            return
+
+        self._clear_issue_popup()
+        if self.demo_round_active:
+            self.demo_balance -= NEWS_ARTICLE_SHOP_PRICE
+        else:
+            self.balance -= NEWS_ARTICLE_SHOP_PRICE
+        self.unlocked_news_cards += 1
+        self.status_message = (
+            f"{call_name}, article unlocked ({self.unlocked_news_cards}/{max_articles}). "
+            "More market context is now visible."
+        )
+
     def _buy_position(self) -> None:
         call_name = self._player_call_name()
         available_balance = self.demo_balance if self.demo_round_active else self.balance
@@ -649,6 +708,10 @@ class BitcoinPredictionGame(arcade.Window):
 
         if clicked_key == "skip_day":
             self._skip_day()
+            return
+
+        if clicked_key == "shop_buy_article":
+            self._buy_news_article()
             return
 
         if self.position is not None:
@@ -1638,11 +1701,48 @@ class BitcoinPredictionGame(arcade.Window):
         card_height = 152
 
         arcade.draw_text("Bitcoin articles", left, bottom + card_height + 22, TEXT, 17, bold=True)
-        article_note = "Optional clues only. You can trade without clicking or reading these cards."
+        article_note = "Starter article is 80%+ reliability. Buy more in the shop for extra context."
         arcade.draw_text(article_note, left + 180, bottom + card_height + 23, MUTED, 12)
-        for index, card in enumerate(self.news_cards):
+
+        max_articles = self._max_news_articles_this_round()
+        unlocked = min(self.unlocked_news_cards, max_articles)
+        shop_zone = ClickZone("shop_buy_article", left + total_width - 252, bottom + card_height - 4, 252, 32)
+        self.click_zones.append(shop_zone)
+        shop_disabled = unlocked >= max_articles
+        shop_color = PANEL_SOFT if shop_disabled else BLUE
+        if self.hovered_key == "shop_buy_article" and not shop_disabled:
+            shop_color = self._boost_rgb(BLUE, 22)
+        arcade.draw_lbwh_rectangle_filled(shop_zone.left, shop_zone.bottom, shop_zone.width, shop_zone.height, shop_color)
+        arcade.draw_lbwh_rectangle_outline(shop_zone.left, shop_zone.bottom, shop_zone.width, shop_zone.height, BORDER, 1)
+        shop_label = f"Shop: Buy Article (${NEWS_ARTICLE_SHOP_PRICE})"
+        if shop_disabled:
+            shop_label = "Shop: Max Articles Reached"
+        arcade.draw_text(
+            shop_label,
+            shop_zone.center_x,
+            shop_zone.center_y + 1,
+            TEXT if not shop_disabled else MUTED,
+            11,
+            bold=True,
+            anchor_x="center",
+            anchor_y="center",
+        )
+        arcade.draw_text(
+            f"Unlocked: {unlocked}/{max_articles}",
+            left + total_width - 10,
+            bottom + card_height + 26,
+            MUTED,
+            11,
+            bold=True,
+            anchor_x="right",
+        )
+
+        for index in range(max_articles):
             card_left = left + index * (card_width + gap)
-            self._draw_news_card(card, card_left, bottom, card_width, card_height)
+            if index < unlocked:
+                self._draw_news_card(self.news_cards[index], card_left, bottom, card_width, card_height)
+            else:
+                self._draw_locked_news_card(index + 1, card_left, bottom, card_width, card_height)
 
     def _draw_news_card(
         self,
@@ -1679,6 +1779,44 @@ class BitcoinPredictionGame(arcade.Window):
             width=content_width,
             align="center",
             multiline=True,
+        )
+
+    def _draw_locked_news_card(
+        self,
+        article_number: int,
+        left: float,
+        bottom: float,
+        width: float,
+        height: float,
+    ) -> None:
+        arcade.draw_lbwh_rectangle_filled(left, bottom, width, height, PANEL_ALT)
+        arcade.draw_lbwh_rectangle_outline(left, bottom, width, height, BORDER, 1)
+        arcade.draw_lbwh_rectangle_filled(left, bottom + height - 8, width, 8, SKIP_RED_DISABLED)
+        arcade.draw_text(
+            f"Article {article_number} Locked",
+            left + width / 2,
+            bottom + height / 2 + 20,
+            MUTED,
+            15,
+            bold=True,
+            anchor_x="center",
+        )
+        arcade.draw_text(
+            f"Buy from shop for ${NEWS_ARTICLE_SHOP_PRICE}",
+            left + width / 2,
+            bottom + height / 2 - 8,
+            MUTED_DARK,
+            11,
+            bold=True,
+            anchor_x="center",
+        )
+        arcade.draw_text(
+            "More clues about likely BTC direction",
+            left + width / 2,
+            bottom + height / 2 - 30,
+            MUTED_DARK,
+            10,
+            anchor_x="center",
         )
 
     def _draw_transition_overlay(self) -> None:
