@@ -28,6 +28,7 @@ from .constants import (
     PRICE_TICK_SECONDS,
     RED,
     RED_DARK,
+    SKIP_LIMIT,
     STARTING_BALANCE,
     TEXT,
     WHITE,
@@ -49,6 +50,12 @@ PAGE_SWITCH_SPEED = 7.2
 RESULT_POPUP_DURATION = 2.4
 ISSUE_POPUP_DURATION = 3.2
 CHART_SMOOTHING_WINDOW = 5
+ALL_IN_GOLD = (214, 167, 49)
+ALL_IN_GOLD_HOVER = (236, 190, 74)
+ALL_IN_GOLD_DISABLED = (98, 83, 44)
+SKIP_RED = (188, 59, 59)
+SKIP_RED_HOVER = (226, 78, 78)
+SKIP_RED_DISABLED = (96, 47, 47)
 
 
 class BitcoinPredictionGame(arcade.Window):
@@ -76,6 +83,7 @@ class BitcoinPredictionGame(arcade.Window):
         self.player_full_name = ""
         self.balance = STARTING_BALANCE
         self.demo_balance = STARTING_BALANCE
+        self.skips_remaining = SKIP_LIMIT
         self.selected_side = "Up"
         self.selected_amount = 0
         self.amount_input_text = ""
@@ -430,12 +438,23 @@ class BitcoinPredictionGame(arcade.Window):
             self.status_message = f"{call_name}, you cannot skip while a trade is active."
             self._trigger_issue_popup("Trade Locked", "Wait for this market to settle before skipping the day.")
             return
+        if self.skips_remaining <= 0:
+            self.status_message = f"{call_name}, no skips left. You only get {SKIP_LIMIT} total."
+            self._trigger_issue_popup("No Skips Left", f"You used all {SKIP_LIMIT} skips. Play this market instead.")
+            return
 
+        self.skips_remaining -= 1
         self.market = self._new_market(demo_mode=self.demo_round_active)
         if self.demo_round_active:
-            self.status_message = f"{call_name}, demo day skipped. New demo market loaded."
+            self.status_message = (
+                f"{call_name}, demo day skipped. New demo market loaded. "
+                f"Skips left: {self.skips_remaining}."
+            )
         else:
-            self.status_message = f"{call_name}, day skipped. New market loaded."
+            self.status_message = (
+                f"{call_name}, day skipped. New market loaded. "
+                f"Skips left: {self.skips_remaining}."
+            )
         self._hover_refresh_needed = True
 
     def _buy_position(self) -> None:
@@ -1411,11 +1430,11 @@ class BitcoinPredictionGame(arcade.Window):
             or self.market.settled
             or int(self._available_balance()) <= 0
         )
-        skip_disabled = self.position is not None or self.market.active
+        skip_disabled = self.position is not None or self.market.active or self.skips_remaining <= 0
 
-        all_in_color = PANEL_SOFT if all_in_disabled else GREEN_DARK
+        all_in_color = ALL_IN_GOLD_DISABLED if all_in_disabled else ALL_IN_GOLD
         if self.hovered_key == "all_in" and not all_in_disabled:
-            all_in_color = GREEN
+            all_in_color = ALL_IN_GOLD_HOVER
         arcade.draw_lbwh_rectangle_filled(
             all_in_zone.left,
             all_in_zone.bottom,
@@ -1442,13 +1461,13 @@ class BitcoinPredictionGame(arcade.Window):
             anchor_y="center",
         )
 
-        skip_color = PANEL_SOFT if skip_disabled else PANEL_ALT
+        skip_color = SKIP_RED_DISABLED if skip_disabled else SKIP_RED
         if self.hovered_key == "skip_day" and not skip_disabled:
-            skip_color = BLUE
+            skip_color = SKIP_RED_HOVER
         arcade.draw_lbwh_rectangle_filled(skip_zone.left, skip_zone.bottom, skip_zone.width, skip_zone.height, skip_color)
         arcade.draw_lbwh_rectangle_outline(skip_zone.left, skip_zone.bottom, skip_zone.width, skip_zone.height, BORDER, 1)
         arcade.draw_text(
-            "Skip Day",
+            f"Skip ({self.skips_remaining})",
             skip_zone.center_x,
             skip_zone.center_y + 1,
             TEXT if not skip_disabled else MUTED,
