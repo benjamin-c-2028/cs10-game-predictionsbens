@@ -21,14 +21,23 @@ from .models import MarketState, NewsCard
 
 
 def _rebalance_display_reliability(cards: list[NewsCard]) -> list[NewsCard]:
-    """Ensure exactly one shown article reliability is above 80%."""
+    """Ensure one card is >80, one card is >50, and remaining cards are randomized."""
     if not cards:
         return []
 
-    high_index = max(range(len(cards)), key=lambda index: cards[index].reliability)
+    shuffled_indexes = list(range(len(cards)))
+    random.shuffle(shuffled_indexes)
+    high_index = shuffled_indexes[0]
+    medium_index = shuffled_indexes[1] if len(cards) > 1 else None
+
     normalized_cards: list[NewsCard] = []
     for index, card in enumerate(cards):
-        reliability = max(81, card.reliability) if index == high_index else min(80, card.reliability)
+        if index == high_index:
+            reliability = random.randint(81, 98)
+        elif medium_index is not None and index == medium_index:
+            reliability = random.randint(51, 80)
+        else:
+            reliability = random.randint(25, 99)
         normalized_cards.append(
             NewsCard(
                 card.headline,
@@ -63,7 +72,7 @@ def build_market(news_cards: list[NewsCard]) -> MarketState:
     starting_price = round(random.uniform(79_750, 80_350), 2)
     history = make_opening_history(starting_price)
     price_bias = combined_news_bias(news_cards)
-    average_reliability = sum(max(81, card.reliability) for card in news_cards) / (100 * len(news_cards))
+    average_reliability = sum(card.reliability for card in news_cards) / (100 * len(news_cards))
     bias_strength = min(1.0, abs(price_bias))
     resolve_direction = 1 if price_bias >= 0 else -1
     resolve_move = (

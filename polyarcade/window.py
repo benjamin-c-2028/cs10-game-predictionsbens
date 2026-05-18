@@ -1638,11 +1638,11 @@ class BitcoinPredictionGame(arcade.Window):
 
         arcade.draw_text(card.source, left + inset, bottom + height - 31, MUTED, 9, bold=True)
         arcade.draw_text(
-            f"{card.reliability}%",
+            f"Reliability score = {card.reliability}%",
             left + width - inset,
             bottom + height - 31,
             MUTED,
-            10,
+            9,
             bold=True,
             anchor_x="right",
         )
