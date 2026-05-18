@@ -1612,15 +1612,19 @@ class BitcoinPredictionGame(arcade.Window):
         arcade.draw_lbwh_rectangle_filled(buy_zone.left, buy_zone.bottom, buy_zone.width, buy_zone.height, buy_color)
         arcade.draw_lbwh_rectangle_outline(buy_zone.left, buy_zone.bottom, buy_zone.width, buy_zone.height, BORDER, 1)
         buy_label = f"Buy Article (${NEWS_ARTICLE_SHOP_PRICE})"
+        buy_label_color = TEXT if not shop_disabled else MUTED
         if self.news_articles_purchased >= max_purchases or unlocked >= max_articles:
             buy_label = "Article Limit Reached"
+            buy_label_color = MUTED
         elif current_balance < NEWS_ARTICLE_SHOP_PRICE:
-            buy_label = "Not Enough Cash"
+            shortfall = max(0.0, float(NEWS_ARTICLE_SHOP_PRICE) - current_balance)
+            buy_label = f"Need ${int(math.ceil(shortfall)):,} more"
+            buy_label_color = ORANGE
         arcade.draw_text(
             buy_label,
             buy_zone.center_x,
             buy_zone.center_y + 2,
-            TEXT if not shop_disabled else MUTED,
+            buy_label_color,
             20,
             bold=True,
             anchor_x="center",
@@ -1695,17 +1699,22 @@ class BitcoinPredictionGame(arcade.Window):
         )
 
         saving_buy_label = "Buy Saving Grace"
+        saving_buy_label_color = TEXT if not saving_disabled else MUTED
         if self.demo_round_active:
             saving_buy_label = "Locked In Demo"
+            saving_buy_label_color = MUTED
         elif self.saving_grace_owned:
             saving_buy_label = "Already Owned"
+            saving_buy_label_color = GREEN
         elif current_balance < SAVING_GRACE_SHOP_PRICE:
-            saving_buy_label = "Not Enough Cash"
+            shortfall = max(0.0, float(SAVING_GRACE_SHOP_PRICE) - current_balance)
+            saving_buy_label = f"Need ${int(math.ceil(shortfall)):,} more"
+            saving_buy_label_color = ORANGE
         arcade.draw_text(
             saving_buy_label,
             saving_buy_zone.center_x,
             saving_buy_zone.center_y + 2,
-            TEXT if not saving_disabled else MUTED,
+            saving_buy_label_color,
             15,
             bold=True,
             anchor_x="center",
@@ -1850,20 +1859,30 @@ class BitcoinPredictionGame(arcade.Window):
             1,
         )
         insider_buy_label = "Unlock Ear"
+        insider_buy_label_color = TEXT if not insider_disabled else MUTED
         if self.demo_round_active:
             insider_buy_label = "Locked In Demo"
+            insider_buy_label_color = MUTED
         elif self.insider_ear_owned:
             if self.market.settled:
                 insider_buy_label = "Start New Market"
+                insider_buy_label_color = MUTED
+            elif current_balance < INSIDER_EAR_WHISPER_PRICE:
+                shortfall = max(0.0, float(INSIDER_EAR_WHISPER_PRICE) - current_balance)
+                insider_buy_label = f"Need ${int(math.ceil(shortfall)):,} more"
+                insider_buy_label_color = ORANGE
             else:
                 insider_buy_label = "Buy Whisper"
+                insider_buy_label_color = TEXT if not insider_disabled else MUTED
         elif current_balance < INSIDER_EAR_UNLOCK_PRICE:
-            insider_buy_label = "Not Enough Cash"
+            shortfall = max(0.0, float(INSIDER_EAR_UNLOCK_PRICE) - current_balance)
+            insider_buy_label = f"Need ${int(math.ceil(shortfall)):,} more"
+            insider_buy_label_color = ORANGE
         arcade.draw_text(
             insider_buy_label,
             insider_buy_zone.center_x,
             insider_buy_zone.center_y + 1,
-            TEXT if not insider_disabled else MUTED,
+            insider_buy_label_color,
             14,
             bold=True,
             anchor_x="center",
