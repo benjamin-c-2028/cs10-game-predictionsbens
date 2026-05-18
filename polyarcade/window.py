@@ -1486,14 +1486,20 @@ class BitcoinPredictionGame(arcade.Window):
                 anchor_x="center",
                 anchor_y="center",
             )
+        hello_y = WINDOW_HEIGHT - 45
+        hello_anchor_y = "center"
+        if self.demo_round_active:
+            # Keep the name clear of the demo badge by pinning it near the top edge.
+            hello_y = WINDOW_HEIGHT - 2
+            hello_anchor_y = "top"
         arcade.draw_text(
             f"Hello, {self._player_call_name()}",
             WINDOW_WIDTH - 392,
-            WINDOW_HEIGHT - 45,
+            hello_y,
             MUTED,
             13,
             anchor_x="right",
-            anchor_y="center",
+            anchor_y=hello_anchor_y,
         )
 
         self._draw_shop_button("Shop")
