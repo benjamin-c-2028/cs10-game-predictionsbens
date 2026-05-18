@@ -12,7 +12,7 @@ UPWARD_BIAS_NEWS = [
         0.82,
     ),
     NewsCard(
-        "Miners send less Bitcoin to exchanges",
+        "Bitcoin miners are sending less bitcoin to sell",
         "Block Ledger",
         "Flow clue",
         87,
@@ -26,11 +26,53 @@ UPWARD_BIAS_NEWS = [
         0.58,
     ),
     NewsCard(
-        "More stablecoin cash hits exchanges",
+        "More cash is moving into crypto exchanges",
         "Market Pulse",
         "Cash clue",
         83,
         0.52,
+    ),
+    NewsCard(
+        "Big investors keep adding money for a third day",
+        "ETF Monitor",
+        "Flow clue",
+        89,
+        0.68,
+    ),
+    NewsCard(
+        "Traders betting against bitcoin are backing off",
+        "Derivatives Desk",
+        "Risk clue",
+        86,
+        0.55,
+    ),
+    NewsCard(
+        "Big bitcoin holders buy more after a dip",
+        "Chain Scope",
+        "Whale clue",
+        88,
+        0.63,
+    ),
+    NewsCard(
+        "Interest-rate news sounds easier for crypto",
+        "Policy Note",
+        "Macro clue",
+        84,
+        0.47,
+    ),
+    NewsCard(
+        "There is less bitcoin sitting on exchanges",
+        "Reserve Watch",
+        "Supply clue",
+        90,
+        0.71,
+    ),
+    NewsCard(
+        "Stronger stock markets are helping crypto",
+        "Cross Asset Wire",
+        "Market clue",
+        85,
+        0.44,
     ),
 ]
 
@@ -43,14 +85,14 @@ DOWNWARD_BIAS_NEWS = [
         -0.82,
     ),
     NewsCard(
-        "A strong dollar hurts crypto",
+        "A stronger U.S. dollar is hurting crypto",
         "Macro Desk",
         "Market clue",
         86,
         -0.62,
     ),
     NewsCard(
-        "Too many traders are crowded on the long side",
+        "Too many traders are betting bitcoin will go up",
         "Derivatives Daily",
         "Risk clue",
         89,
@@ -63,6 +105,48 @@ DOWNWARD_BIAS_NEWS = [
         84,
         -0.54,
     ),
+    NewsCard(
+        "Bitcoin miners are moving more coins to sell",
+        "Miner Flow",
+        "Supply clue",
+        88,
+        -0.68,
+    ),
+    NewsCard(
+        "Big investors are pulling money out of bitcoin funds",
+        "ETF Monitor",
+        "Flow clue",
+        87,
+        -0.61,
+    ),
+    NewsCard(
+        "Risky 'price will go up' bets are getting too crowded",
+        "Perp Signal",
+        "Risk clue",
+        90,
+        -0.73,
+    ),
+    NewsCard(
+        "Higher interest rates are putting pressure on crypto",
+        "Macro Desk",
+        "Macro clue",
+        85,
+        -0.49,
+    ),
+    NewsCard(
+        "A big exchange shows many more sellers than buyers",
+        "Order Book Live",
+        "Market clue",
+        86,
+        -0.57,
+    ),
+    NewsCard(
+        "People are cashing out stablecoins, leaving less buying money",
+        "Liquidity Wire",
+        "Cash clue",
+        84,
+        -0.46,
+    ),
 ]
 
 LOW_BIAS_NEWS = [
@@ -74,7 +158,7 @@ LOW_BIAS_NEWS = [
         0.18,
     ),
     NewsCard(
-        "Options traders expect a mixed move",
+        "Traders are split on whether bitcoin goes up or down",
         "Vol Report",
         "Mixed clue",
         82,
@@ -86,6 +170,34 @@ LOW_BIAS_NEWS = [
         "Small clue",
         81,
         0.14,
+    ),
+    NewsCard(
+        "Bitcoin keeps bouncing with no clear direction",
+        "Chop Watch",
+        "Mixed clue",
+        80,
+        0.09,
+    ),
+    NewsCard(
+        "Big wallets look steady with no major surprise moves",
+        "Chain Pulse",
+        "Small clue",
+        79,
+        -0.08,
+    ),
+    NewsCard(
+        "Market signals look balanced right now",
+        "Vol Report",
+        "Mixed clue",
+        82,
+        0.06,
+    ),
+    NewsCard(
+        "Buying and selling look even across regions",
+        "Flow Desk",
+        "Small clue",
+        78,
+        -0.05,
     ),
 ]
 
