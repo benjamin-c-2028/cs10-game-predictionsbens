@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import math
+import random
 
 import arcade
 
@@ -12,7 +13,10 @@ from .constants import (
     BORDER,
     GREEN,
     GREEN_DARK,
+    GAME_OVER_BALANCE_THRESHOLD,
     HEADER,
+    INSIDER_EAR_UNLOCK_PRICE,
+    INSIDER_EAR_WHISPER_PRICE,
     MARKET_DURATION_SECONDS,
     MARKET_TRANSITION_SPEED,
     MAX_NEWS_ARTICLE_PURCHASES,
@@ -31,6 +35,7 @@ from .constants import (
     PRICE_TICK_SECONDS,
     RED,
     RED_DARK,
+    SAVING_GRACE_SHOP_PRICE,
     SKIP_LIMIT,
     STARTING_BALANCE,
     TEXT,
@@ -89,6 +94,13 @@ class BitcoinPredictionGame(arcade.Window):
         self.unlocked_news_cards = 1
         self.news_articles_purchased = 0
         self.skips_remaining = SKIP_LIMIT
+        self.saving_grace_owned = False
+        self.insider_ear_owned = False
+        self.insider_tip_text = "No insider whisper purchased yet."
+        self.insider_tip_side = ""
+        self.insider_tip_confidence = 0
+        self.insider_suspicion = 0.0
+        self.game_over_active = False
         self.selected_side = "Up"
         self.selected_amount = 0
         self.amount_input_text = ""
@@ -178,6 +190,15 @@ class BitcoinPredictionGame(arcade.Window):
         self._mark_chart_dirty()
         self._hover_refresh_needed = True
         self.position = None
+        if demo_mode:
+            self.insider_tip_text = "Insider Ear is locked during demo."
+            self.insider_tip_side = ""
+            self.insider_tip_confidence = 0
+        else:
+            self.insider_tip_text = "No insider whisper purchased for this market."
+            self.insider_tip_side = ""
+            self.insider_tip_confidence = 0
+            self.insider_suspicion = max(0.0, self.insider_suspicion - 0.08)
         if demo_mode:
             self.selected_side = ""
             self.selected_amount = 0
@@ -276,12 +297,14 @@ class BitcoinPredictionGame(arcade.Window):
         if self.shop_active:
             self._draw_shop()
             self._draw_issue_popup()
+            self._draw_game_over_overlay()
             self._refresh_hovered_key_if_needed()
             self._draw_game_cursor()
             self._draw_page_transition()
             return
         if self.dashboard_active:
             self._draw_dashboard()
+            self._draw_game_over_overlay()
             self._refresh_hovered_key_if_needed()
             self._draw_game_cursor()
             self._draw_page_transition()
@@ -294,6 +317,7 @@ class BitcoinPredictionGame(arcade.Window):
         self._draw_transition_overlay()
         self._draw_result_popup()
         self._draw_issue_popup()
+        self._draw_game_over_overlay()
         self._refresh_hovered_key_if_needed()
         self._draw_game_cursor()
         self._draw_page_transition()
@@ -379,6 +403,7 @@ class BitcoinPredictionGame(arcade.Window):
                 )
             else:
                 self.status_message = f"{call_name}, market settled {winning_side}. No position was opened."
+            self._check_game_loss_state()
             return
 
         payout = round(self.position.shares, 2)
@@ -418,6 +443,7 @@ class BitcoinPredictionGame(arcade.Window):
                 self.status_message = (
                     f"{call_name}, {winning_side} wins. Your {self.position.side} position expired at $0."
                 )
+        self._check_game_loss_state()
 
     def _trigger_result_popup(self, kind: str, amount: float, winning_side: str) -> None:
         self.result_popup_kind = kind
@@ -566,6 +592,236 @@ class BitcoinPredictionGame(arcade.Window):
             f"{call_name}, article unlocked ({self.unlocked_news_cards}/{max_articles}). "
             "More market context is now visible."
         )
+        self._check_game_loss_state()
+
+    def _buy_saving_grace(self) -> None:
+        call_name = self._player_call_name()
+        if self.demo_round_active:
+            self.status_message = f"{call_name}, Saving Grace can only be bought with real practice cash."
+            self._trigger_issue_popup(
+                "Demo Mode",
+                "Saving Grace is disabled in demo. Start the real market to buy it.",
+            )
+            return
+        if self.saving_grace_owned:
+            self.status_message = f"{call_name}, you already own Saving Grace."
+            self._trigger_issue_popup(
+                "Already Owned",
+                "Saving Grace is already active on your account.",
+            )
+            return
+        if self.balance < SAVING_GRACE_SHOP_PRICE:
+            self.status_message = (
+                f"{call_name}, not enough cash for Saving Grace. "
+                f"Need {self._format_money(float(SAVING_GRACE_SHOP_PRICE))}."
+            )
+            self._trigger_issue_popup(
+                "Not Enough Cash",
+                (
+                    f"Saving Grace cost: {self._format_money(float(SAVING_GRACE_SHOP_PRICE))}. "
+                    f"Available: {self._format_money(self.balance)}."
+                ),
+            )
+            return
+
+        self.balance -= SAVING_GRACE_SHOP_PRICE
+        self.saving_grace_owned = True
+        self.status_message = (
+            f"{call_name}, Saving Grace unlocked. "
+            "If your balance drops below $100, you revive at $1,000."
+        )
+        self._trigger_issue_popup(
+            "Saving Grace Unlocked",
+            "Protection active. If your balance falls below $100, it restores to $1,000.",
+        )
+        self._check_game_loss_state()
+
+    def _current_suspicion_label(self) -> str:
+        if self.insider_suspicion < 0.25:
+            return "Not Suspicious"
+        if self.insider_suspicion < 0.5:
+            return "Questionable"
+        if self.insider_suspicion < 0.75:
+            return "Suspicious"
+        return "Very Suspicious"
+
+    def _buy_insider_ear(self) -> None:
+        call_name = self._player_call_name()
+        if self.demo_round_active:
+            self.status_message = f"{call_name}, Insider Ear is locked in demo."
+            self._trigger_issue_popup(
+                "Demo Mode",
+                "Insider Ear can only be used in the real practice market.",
+            )
+            return
+        if self.insider_ear_owned:
+            self.status_message = f"{call_name}, Insider Ear already unlocked."
+            self._trigger_issue_popup(
+                "Already Owned",
+                "Insider Ear is already unlocked. Buy a whisper instead.",
+            )
+            return
+        if self.balance < INSIDER_EAR_UNLOCK_PRICE:
+            self.status_message = (
+                f"{call_name}, not enough cash to unlock Insider Ear. "
+                f"Need {self._format_money(float(INSIDER_EAR_UNLOCK_PRICE))}."
+            )
+            self._trigger_issue_popup(
+                "Not Enough Cash",
+                (
+                    f"Unlock price: {self._format_money(float(INSIDER_EAR_UNLOCK_PRICE))}. "
+                    f"Available: {self._format_money(self.balance)}."
+                ),
+            )
+            return
+
+        self.balance -= INSIDER_EAR_UNLOCK_PRICE
+        self.insider_ear_owned = True
+        self.insider_tip_text = "Insider Ear unlocked. Buy a whisper for this market."
+        self.status_message = (
+            f"{call_name}, Insider Ear unlocked. "
+            f"Whispers now cost {self._format_money(float(INSIDER_EAR_WHISPER_PRICE))} each."
+        )
+        self._trigger_issue_popup(
+            "Insider Ear Unlocked",
+            (
+                "Unlocked. You can now buy whispered insider hints for "
+                f"{self._format_money(float(INSIDER_EAR_WHISPER_PRICE))} per market."
+            ),
+        )
+        self._check_game_loss_state()
+
+    def _buy_insider_whisper(self) -> None:
+        call_name = self._player_call_name()
+        if self.demo_round_active:
+            self.status_message = f"{call_name}, insider whispers are disabled in demo."
+            self._trigger_issue_popup(
+                "Demo Mode",
+                "Insider whispers are only available in the real practice market.",
+            )
+            return
+        if not self.insider_ear_owned:
+            self.status_message = f"{call_name}, unlock Insider Ear first."
+            self._trigger_issue_popup(
+                "Locked",
+                (
+                    "Unlock Insider Ear first for "
+                    f"{self._format_money(float(INSIDER_EAR_UNLOCK_PRICE))}."
+                ),
+            )
+            return
+        if self.market.settled:
+            self.status_message = f"{call_name}, this market is settled. Start a new market first."
+            self._trigger_issue_popup(
+                "Market Settled",
+                "Start a new market before buying an insider whisper.",
+            )
+            return
+        if self.balance < INSIDER_EAR_WHISPER_PRICE:
+            self.status_message = (
+                f"{call_name}, not enough cash for an insider whisper. "
+                f"Need {self._format_money(float(INSIDER_EAR_WHISPER_PRICE))}."
+            )
+            self._trigger_issue_popup(
+                "Not Enough Cash",
+                (
+                    f"Whisper price: {self._format_money(float(INSIDER_EAR_WHISPER_PRICE))}. "
+                    f"Available: {self._format_money(self.balance)}."
+                ),
+            )
+            return
+
+        self.balance -= INSIDER_EAR_WHISPER_PRICE
+
+        true_side = "Up" if self.market.resolve_price >= self.market.target_price else "Down"
+        reliability = max(0.72, 0.94 - self.insider_suspicion * 0.25)
+        whisper_is_correct = random.random() < reliability
+        hinted_side = true_side if whisper_is_correct else ("Down" if true_side == "Up" else "Up")
+        confidence = int(max(55, min(99, reliability * 100 + random.randint(-4, 5))))
+        self.insider_tip_side = hinted_side
+        self.insider_tip_confidence = confidence
+
+        self.insider_suspicion = min(1.0, self.insider_suspicion + 0.18)
+        suspicion_label = self._current_suspicion_label()
+        self.insider_tip_text = (
+            f"Insider whisper: '{hinted_side}' is favored ({confidence}% confidence). "
+            f"Demeanor: {suspicion_label}."
+        )
+        self.status_message = (
+            f"{call_name}, insider whisper purchased: {hinted_side} favored "
+            f"({confidence}% confidence). Demeanor is now {suspicion_label.lower()}."
+        )
+        self._trigger_issue_popup(
+            "Insider Whisper Received",
+            (
+                f"Insider says '{hinted_side}' ({confidence}% confidence). "
+                f"Demeanor: {suspicion_label}."
+            ),
+        )
+        self._check_game_loss_state()
+
+    def _check_game_loss_state(self) -> None:
+        if self.demo_round_active or self.game_over_active:
+            return
+        if self.balance >= GAME_OVER_BALANCE_THRESHOLD:
+            return
+
+        call_name = self._player_call_name()
+        if self.saving_grace_owned:
+            self.balance = STARTING_BALANCE
+            self.market = self._new_market()
+            self.status_message = (
+                f"{call_name}, Saving Grace activated. "
+                f"Balance restored to {self._format_money(float(STARTING_BALANCE))}."
+            )
+            self._trigger_issue_popup(
+                "Saving Grace Activated",
+                (
+                    "You dropped below $100, so Saving Grace revived you "
+                    f"to {self._format_money(float(STARTING_BALANCE))}."
+                ),
+            )
+            self._hover_refresh_needed = True
+            return
+
+        self._trigger_game_over()
+
+    def _trigger_game_over(self) -> None:
+        call_name = self._player_call_name()
+        self.game_over_active = True
+        self.market.active = False
+        self.market.settled = True
+        self.position = None
+        self.amount_input_active = False
+        self.dashboard_active = False
+        self.shop_active = False
+        self.status_message = (
+            f"{call_name}, game over. "
+            f"Your balance fell below {self._format_money(float(GAME_OVER_BALANCE_THRESHOLD))}."
+        )
+        self._hover_refresh_needed = True
+
+    def _restart_after_game_over(self) -> None:
+        self.game_over_active = False
+        self.balance = STARTING_BALANCE
+        self.demo_balance = STARTING_BALANCE
+        self.unlocked_news_cards = 1
+        self.news_articles_purchased = 0
+        self.skips_remaining = SKIP_LIMIT
+        self.saving_grace_owned = False
+        self.insider_ear_owned = False
+        self.insider_tip_text = "No insider whisper purchased yet."
+        self.insider_tip_side = ""
+        self.insider_tip_confidence = 0
+        self.insider_suspicion = 0.0
+        self.trade_history.clear()
+        self.market = self._new_market()
+        self.status_message = (
+            f"{self._player_call_name()}, new run started at "
+            f"{self._format_money(float(STARTING_BALANCE))}."
+        )
+        self._clear_issue_popup()
+        self._hover_refresh_needed = True
 
     def _buy_position(self) -> None:
         call_name = self._player_call_name()
@@ -624,6 +880,7 @@ class BitcoinPredictionGame(arcade.Window):
                 f"Nice, {call_name}. Bought {self.selected_side} for ${self.selected_amount} at {entry_price}c. "
                 "The 15-second market is now live."
             )
+        self._check_game_loss_state()
 
     def _contract_price(self, side: str) -> int:
         return contract_price(self.market, side)
@@ -718,6 +975,11 @@ class BitcoinPredictionGame(arcade.Window):
                 self._hover_refresh_needed = True
             return
 
+        if self.game_over_active:
+            if clicked_key == "restart_game":
+                self._restart_after_game_over()
+            return
+
         if clicked_key == "dashboard_toggle":
             self.dashboard_active = not self.dashboard_active
             if self.dashboard_active:
@@ -758,6 +1020,17 @@ class BitcoinPredictionGame(arcade.Window):
 
         if clicked_key == "shop_buy_article":
             self._buy_news_article()
+            return
+
+        if clicked_key == "shop_buy_saving_grace":
+            self._buy_saving_grace()
+            return
+
+        if clicked_key == "shop_buy_insider_ear":
+            if self.insider_ear_owned:
+                self._buy_insider_whisper()
+            else:
+                self._buy_insider_ear()
             return
 
         if self.position is not None:
@@ -1301,8 +1574,12 @@ class BitcoinPredictionGame(arcade.Window):
         arcade.draw_lbwh_rectangle_outline(panel_left, panel_bottom, panel_width, panel_height, BORDER, 1)
         arcade.draw_lbwh_rectangle_filled(panel_left, panel_bottom + panel_height - 8, panel_width, 8, BLUE)
 
-        arcade.draw_text("News Shop", panel_left + 32, panel_bottom + panel_height - 62, TEXT, 34, bold=True)
-        mode_text = "Demo shop bundle: 3 articles already unlocked." if self.demo_round_active else "Buy extra news articles for more market clues."
+        arcade.draw_text("Market Shop", panel_left + 32, panel_bottom + panel_height - 62, TEXT, 34, bold=True)
+        mode_text = (
+            "Demo shop bundle: 3 articles already unlocked. Saving Grace is locked in demo."
+            if self.demo_round_active
+            else "Buy extra news articles and protection upgrades."
+        )
         arcade.draw_text(mode_text, panel_left + 34, panel_bottom + panel_height - 96, MUTED, 14)
 
         max_articles = self._max_news_articles_this_round()
@@ -1318,7 +1595,7 @@ class BitcoinPredictionGame(arcade.Window):
         stat_cards = [
             ("Cash Available", self._format_money(current_balance), TEXT),
             ("Unlocked Articles", f"{unlocked}/{max_articles}", TEXT),
-            ("Purchases Used", f"{self.news_articles_purchased}/{max_purchases}", TEXT),
+            ("Saving Grace", "Owned" if self.saving_grace_owned else "Not Owned", GREEN if self.saving_grace_owned else TEXT),
         ]
         for index, (label, value, value_color) in enumerate(stat_cards):
             card_left = panel_left + 32 + index * 296
@@ -1354,9 +1631,374 @@ class BitcoinPredictionGame(arcade.Window):
             f"Each buy unlocks one new article slot for this round only.",
             f"Starter slot is always the highest-reliability article (80%+).",
             f"Round cap: 1 starter + up to {max_purchases} purchased articles.",
+            f"Drop below {self._format_money(float(GAME_OVER_BALANCE_THRESHOLD))} and you lose the run.",
         ]
         for index, line in enumerate(helper_lines):
             arcade.draw_text(line, panel_left + 34, panel_bottom + panel_height - 346 - index * 26, MUTED, 13)
+
+        feature_gap = 20
+        saving_card_left = panel_left + 32
+        saving_card_bottom = panel_bottom + 54
+        saving_card_width = (panel_width - 64 - feature_gap) / 2
+        saving_card_height = 224
+        arcade.draw_lbwh_rectangle_filled(saving_card_left, saving_card_bottom, saving_card_width, saving_card_height, PANEL_ALT)
+        arcade.draw_lbwh_rectangle_outline(saving_card_left, saving_card_bottom, saving_card_width, saving_card_height, BORDER, 1)
+        arcade.draw_lbwh_rectangle_filled(saving_card_left, saving_card_bottom + saving_card_height - 8, saving_card_width, 8, ORANGE)
+
+        icon_center_x = saving_card_left + 106
+        icon_center_y = saving_card_bottom + 116
+        self._draw_saving_grace_icon(icon_center_x, icon_center_y, scale=0.85)
+
+        arcade.draw_text("In The Shop: Saving Grace", saving_card_left + 190, saving_card_bottom + 168, TEXT, 24, bold=True)
+        arcade.draw_text(
+            "If your real balance drops below $100, Saving Grace revives you to $1,000.",
+            saving_card_left + 190,
+            saving_card_bottom + 136,
+            MUTED,
+            13,
+        )
+        arcade.draw_text(
+            f"Price: {self._format_money(float(SAVING_GRACE_SHOP_PRICE))}",
+            saving_card_left + 190,
+            saving_card_bottom + 104,
+            ORANGE,
+            15,
+            bold=True,
+        )
+
+        saving_disabled = self.demo_round_active or self.saving_grace_owned or current_balance < SAVING_GRACE_SHOP_PRICE
+        saving_buy_zone = ClickZone(
+            "shop_buy_saving_grace",
+            saving_card_left + saving_card_width - 296,
+            saving_card_bottom + 30,
+            260,
+            58,
+        )
+        self.click_zones.append(saving_buy_zone)
+        saving_buy_color = PANEL_SOFT if saving_disabled else GREEN_DARK
+        if self.hovered_key == "shop_buy_saving_grace" and not saving_disabled:
+            saving_buy_color = GREEN
+        arcade.draw_lbwh_rectangle_filled(
+            saving_buy_zone.left,
+            saving_buy_zone.bottom,
+            saving_buy_zone.width,
+            saving_buy_zone.height,
+            saving_buy_color,
+        )
+        arcade.draw_lbwh_rectangle_outline(
+            saving_buy_zone.left,
+            saving_buy_zone.bottom,
+            saving_buy_zone.width,
+            saving_buy_zone.height,
+            BORDER,
+            1,
+        )
+
+        saving_buy_label = "Buy Saving Grace"
+        if self.demo_round_active:
+            saving_buy_label = "Locked In Demo"
+        elif self.saving_grace_owned:
+            saving_buy_label = "Already Owned"
+        elif current_balance < SAVING_GRACE_SHOP_PRICE:
+            saving_buy_label = "Not Enough Cash"
+        arcade.draw_text(
+            saving_buy_label,
+            saving_buy_zone.center_x,
+            saving_buy_zone.center_y + 2,
+            TEXT if not saving_disabled else MUTED,
+            15,
+            bold=True,
+            anchor_x="center",
+            anchor_y="center",
+        )
+
+        insider_card_left = saving_card_left + saving_card_width + feature_gap
+        insider_card_bottom = saving_card_bottom
+        insider_card_width = saving_card_width
+        insider_card_height = saving_card_height
+        insider_purple = (152, 98, 242)
+        arcade.draw_lbwh_rectangle_filled(insider_card_left, insider_card_bottom, insider_card_width, insider_card_height, PANEL_ALT)
+        arcade.draw_lbwh_rectangle_outline(insider_card_left, insider_card_bottom, insider_card_width, insider_card_height, BORDER, 1)
+        arcade.draw_lbwh_rectangle_filled(insider_card_left, insider_card_bottom + insider_card_height - 8, insider_card_width, 8, insider_purple)
+
+        insider_icon_x = insider_card_left + 78
+        insider_icon_y = insider_card_bottom + 118
+        self._draw_insider_ear_icon(insider_icon_x, insider_icon_y, scale=0.82)
+
+        arcade.draw_text("Insider Ear", insider_card_left + 158, insider_card_bottom + 170, TEXT, 24, bold=True)
+        insider_price_label = (
+            f"Unlock: {self._format_money(float(INSIDER_EAR_UNLOCK_PRICE))}"
+            if not self.insider_ear_owned
+            else f"Whisper: {self._format_money(float(INSIDER_EAR_WHISPER_PRICE))} each"
+        )
+        arcade.draw_text(
+            insider_price_label,
+            insider_card_left + 158,
+            insider_card_bottom + 142,
+            insider_purple,
+            14,
+            bold=True,
+        )
+
+        insider_text_box_left = insider_card_left + 152
+        insider_text_box_bottom = insider_card_bottom + 72
+        insider_text_box_width = insider_card_width - 170
+        insider_text_box_height = 62
+        arcade.draw_lbwh_rectangle_filled(
+            insider_text_box_left,
+            insider_text_box_bottom,
+            insider_text_box_width,
+            insider_text_box_height,
+            (20, 27, 36),
+        )
+        arcade.draw_lbwh_rectangle_outline(
+            insider_text_box_left,
+            insider_text_box_bottom,
+            insider_text_box_width,
+            insider_text_box_height,
+            BORDER,
+            1,
+        )
+        insider_text = self.insider_tip_text
+        if self.demo_round_active:
+            insider_text = "Demo mode: Insider Ear is locked."
+        elif not self.insider_ear_owned:
+            insider_text = "Unlock Insider Ear to buy whispers."
+        arcade.draw_text(
+            insider_text,
+            insider_text_box_left + 10,
+            insider_text_box_bottom + insider_text_box_height - 20,
+            MUTED,
+            11,
+            width=int(insider_text_box_width - 16),
+            multiline=True,
+        )
+
+        suspicion_bar_left = insider_card_left + 152
+        suspicion_bar_bottom = insider_card_bottom + 44
+        suspicion_bar_width = insider_card_width - 170
+        suspicion_bar_height = 12
+        arcade.draw_text("Demeanor", suspicion_bar_left, suspicion_bar_bottom + 15, MUTED, 11, bold=True)
+        arcade.draw_lbwh_rectangle_filled(
+            suspicion_bar_left,
+            suspicion_bar_bottom,
+            suspicion_bar_width,
+            suspicion_bar_height,
+            (30, 37, 46),
+        )
+        if self.insider_suspicion < 0.34:
+            suspicion_color = GREEN
+        elif self.insider_suspicion < 0.67:
+            suspicion_color = YELLOW
+        else:
+            suspicion_color = RED
+        arcade.draw_lbwh_rectangle_filled(
+            suspicion_bar_left,
+            suspicion_bar_bottom,
+            suspicion_bar_width * max(0.0, min(1.0, self.insider_suspicion)),
+            suspicion_bar_height,
+            suspicion_color,
+        )
+        arcade.draw_lbwh_rectangle_outline(
+            suspicion_bar_left,
+            suspicion_bar_bottom,
+            suspicion_bar_width,
+            suspicion_bar_height,
+            BORDER,
+            1,
+        )
+        arcade.draw_text("Not suspicious", suspicion_bar_left, suspicion_bar_bottom - 15, MUTED_DARK, 10)
+        arcade.draw_text("Suspicious", suspicion_bar_left + suspicion_bar_width, suspicion_bar_bottom - 15, MUTED_DARK, 10, anchor_x="right")
+        arcade.draw_text(
+            self._current_suspicion_label(),
+            suspicion_bar_left + suspicion_bar_width,
+            suspicion_bar_bottom + 15,
+            MUTED,
+            11,
+            bold=True,
+            anchor_x="right",
+        )
+
+        insider_disabled = self.demo_round_active or (
+            (not self.insider_ear_owned and current_balance < INSIDER_EAR_UNLOCK_PRICE)
+            or (self.insider_ear_owned and (self.market.settled or current_balance < INSIDER_EAR_WHISPER_PRICE))
+        )
+        insider_buy_zone = ClickZone(
+            "shop_buy_insider_ear",
+            insider_card_left + insider_card_width - 246,
+            insider_card_bottom + 12,
+            218,
+            48,
+        )
+        self.click_zones.append(insider_buy_zone)
+        insider_buy_color = PANEL_SOFT if insider_disabled else GREEN_DARK
+        if self.hovered_key == "shop_buy_insider_ear" and not insider_disabled:
+            insider_buy_color = GREEN
+        arcade.draw_lbwh_rectangle_filled(
+            insider_buy_zone.left,
+            insider_buy_zone.bottom,
+            insider_buy_zone.width,
+            insider_buy_zone.height,
+            insider_buy_color,
+        )
+        arcade.draw_lbwh_rectangle_outline(
+            insider_buy_zone.left,
+            insider_buy_zone.bottom,
+            insider_buy_zone.width,
+            insider_buy_zone.height,
+            BORDER,
+            1,
+        )
+        insider_buy_label = "Unlock Ear"
+        if self.demo_round_active:
+            insider_buy_label = "Locked In Demo"
+        elif self.insider_ear_owned:
+            if self.market.settled:
+                insider_buy_label = "Start New Market"
+            else:
+                insider_buy_label = "Buy Whisper"
+        elif current_balance < INSIDER_EAR_UNLOCK_PRICE:
+            insider_buy_label = "Not Enough Cash"
+        arcade.draw_text(
+            insider_buy_label,
+            insider_buy_zone.center_x,
+            insider_buy_zone.center_y + 1,
+            TEXT if not insider_disabled else MUTED,
+            14,
+            bold=True,
+            anchor_x="center",
+            anchor_y="center",
+        )
+
+    def _draw_saving_grace_icon(self, center_x: float, center_y: float, scale: float = 1.0) -> None:
+        wing_color = (130, 122, 112)
+        wing_shadow = (84, 78, 72)
+        heart_color = (188, 66, 59)
+        heart_shadow = (120, 44, 40)
+        halo_color = (228, 178, 74)
+
+        wing_width = 72 * scale
+        wing_height = 46 * scale
+        arcade.draw_triangle_filled(
+            center_x - 26 * scale,
+            center_y + 4 * scale,
+            center_x - 26 * scale - wing_width,
+            center_y + wing_height,
+            center_x - 30 * scale - wing_width * 0.88,
+            center_y - wing_height,
+            wing_shadow,
+        )
+        arcade.draw_triangle_filled(
+            center_x + 26 * scale,
+            center_y + 4 * scale,
+            center_x + 26 * scale + wing_width,
+            center_y + wing_height,
+            center_x + 30 * scale + wing_width * 0.88,
+            center_y - wing_height,
+            wing_shadow,
+        )
+        arcade.draw_triangle_filled(
+            center_x - 22 * scale,
+            center_y + 6 * scale,
+            center_x - 22 * scale - wing_width * 0.86,
+            center_y + wing_height * 0.8,
+            center_x - 24 * scale - wing_width * 0.78,
+            center_y - wing_height * 0.84,
+            wing_color,
+        )
+        arcade.draw_triangle_filled(
+            center_x + 22 * scale,
+            center_y + 6 * scale,
+            center_x + 22 * scale + wing_width * 0.86,
+            center_y + wing_height * 0.8,
+            center_x + 24 * scale + wing_width * 0.78,
+            center_y - wing_height * 0.84,
+            wing_color,
+        )
+
+        arcade.draw_circle_outline(center_x, center_y + 56 * scale, 28 * scale, halo_color, 4)
+
+        arcade.draw_circle_filled(center_x - 16 * scale, center_y + 8 * scale, 17 * scale, heart_shadow)
+        arcade.draw_circle_filled(center_x + 16 * scale, center_y + 8 * scale, 17 * scale, heart_shadow)
+        arcade.draw_triangle_filled(
+            center_x - 32 * scale,
+            center_y + 4 * scale,
+            center_x + 32 * scale,
+            center_y + 4 * scale,
+            center_x,
+            center_y - 44 * scale,
+            heart_shadow,
+        )
+
+        arcade.draw_circle_filled(center_x - 14 * scale, center_y + 10 * scale, 14 * scale, heart_color)
+        arcade.draw_circle_filled(center_x + 14 * scale, center_y + 10 * scale, 14 * scale, heart_color)
+        arcade.draw_triangle_filled(
+            center_x - 28 * scale,
+            center_y + 6 * scale,
+            center_x + 28 * scale,
+            center_y + 6 * scale,
+            center_x,
+            center_y - 38 * scale,
+            heart_color,
+        )
+
+    def _draw_insider_ear_icon(self, center_x: float, center_y: float, scale: float = 1.0) -> None:
+        aura = (142, 94, 238)
+        ear_outer = (223, 198, 185)
+        ear_inner = (172, 133, 129)
+        blood = (136, 38, 42)
+
+        aura_offsets = [
+            (-34, 40, 22),
+            (30, 36, 20),
+            (-40, -12, 24),
+            (36, -16, 20),
+            (0, -48, 22),
+        ]
+        for ox, oy, radius in aura_offsets:
+            arcade.draw_circle_outline(
+                center_x + ox * scale,
+                center_y + oy * scale,
+                radius * scale,
+                aura,
+                3,
+            )
+
+        outer_shape = [
+            (center_x - 42 * scale, center_y + 28 * scale),
+            (center_x - 14 * scale, center_y + 58 * scale),
+            (center_x + 26 * scale, center_y + 54 * scale),
+            (center_x + 44 * scale, center_y + 22 * scale),
+            (center_x + 46 * scale, center_y - 16 * scale),
+            (center_x + 18 * scale, center_y - 62 * scale),
+            (center_x - 18 * scale, center_y - 66 * scale),
+            (center_x - 40 * scale, center_y - 34 * scale),
+            (center_x - 44 * scale, center_y - 4 * scale),
+        ]
+        inner_shape = [
+            (center_x - 18 * scale, center_y + 24 * scale),
+            (center_x + 10 * scale, center_y + 30 * scale),
+            (center_x + 22 * scale, center_y + 12 * scale),
+            (center_x + 20 * scale, center_y - 14 * scale),
+            (center_x + 6 * scale, center_y - 42 * scale),
+            (center_x - 14 * scale, center_y - 44 * scale),
+            (center_x - 24 * scale, center_y - 18 * scale),
+            (center_x - 24 * scale, center_y + 2 * scale),
+        ]
+        arcade.draw_polygon_filled(outer_shape, ear_outer)
+        arcade.draw_polygon_filled(inner_shape, ear_inner)
+        arcade.draw_line_strip(outer_shape + [outer_shape[0]], (112, 82, 77), 2)
+        arcade.draw_line_strip(inner_shape + [inner_shape[0]], (101, 73, 70), 2)
+
+        arcade.draw_triangle_filled(
+            center_x - 16 * scale,
+            center_y - 66 * scale,
+            center_x + 12 * scale,
+            center_y - 66 * scale,
+            center_x - 4 * scale,
+            center_y - 94 * scale,
+            blood,
+        )
 
     def _draw_market(self) -> None:
         left = 70
@@ -2168,6 +2810,65 @@ class BitcoinPredictionGame(arcade.Window):
             (*MUTED, text_alpha),
             12,
             bold=True,
+        )
+
+    def _draw_game_over_overlay(self) -> None:
+        if not self.game_over_active:
+            return
+
+        overlay_alpha = 172
+        left = WINDOW_WIDTH / 2 - 360
+        bottom = WINDOW_HEIGHT / 2 - 180
+        width = 720
+        height = 360
+        arcade.draw_lbwh_rectangle_filled(0, 0, WINDOW_WIDTH, WINDOW_HEIGHT, (4, 8, 12, overlay_alpha))
+        arcade.draw_lbwh_rectangle_filled(left, bottom, width, height, PANEL)
+        arcade.draw_lbwh_rectangle_outline(left, bottom, width, height, RED, 2)
+        arcade.draw_lbwh_rectangle_filled(left, bottom + height - 14, width, 14, RED)
+        arcade.draw_text("GAME OVER", left + 28, bottom + height - 62, RED, 38, bold=True)
+        arcade.draw_text(
+            f"Your balance dropped below {self._format_money(float(GAME_OVER_BALANCE_THRESHOLD))}.",
+            left + 30,
+            bottom + height - 108,
+            TEXT,
+            18,
+            bold=True,
+        )
+        arcade.draw_text(
+            "Restart to continue with a fresh $1,000 run.",
+            left + 30,
+            bottom + height - 142,
+            MUTED,
+            14,
+        )
+
+        restart_zone = ClickZone("restart_game", left + width / 2 - 170, bottom + 44, 340, 62)
+        self.click_zones.append(restart_zone)
+        restart_color = BLUE if self.hovered_key == "restart_game" else GREEN_DARK
+        arcade.draw_lbwh_rectangle_filled(
+            restart_zone.left,
+            restart_zone.bottom,
+            restart_zone.width,
+            restart_zone.height,
+            restart_color,
+        )
+        arcade.draw_lbwh_rectangle_outline(
+            restart_zone.left,
+            restart_zone.bottom,
+            restart_zone.width,
+            restart_zone.height,
+            BORDER,
+            1,
+        )
+        arcade.draw_text(
+            "Restart Practice",
+            restart_zone.center_x,
+            restart_zone.center_y + 2,
+            TEXT,
+            20,
+            bold=True,
+            anchor_x="center",
+            anchor_y="center",
         )
 
     def _draw_page_transition(self) -> None:
