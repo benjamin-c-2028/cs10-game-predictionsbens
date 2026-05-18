@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import math
+from pathlib import Path
 import random
 
 import arcade
@@ -27,7 +28,7 @@ from .constants import (
     MAX_FULL_NAME_CHARS,
     MUTED,
     MUTED_DARK,
-    NEWS_ARTICLE_SHOP_PRICE,
+    NEWS_ARTICLE_SHOP_PRICES,
     ORANGE,
     PANEL,
     PANEL_ALT,
@@ -64,6 +65,9 @@ ALL_IN_GOLD_DISABLED = (98, 83, 44)
 SKIP_RED = (188, 59, 59)
 SKIP_RED_HOVER = (226, 78, 78)
 SKIP_RED_DISABLED = (96, 47, 47)
+SOUNDS_DIR = Path(__file__).resolve().parent.parent / "asset-game" / "sounds"
+WIN_SOUND_FILES = ("win_1.wav", "win_2.wav", "win_3.wav")
+LOSE_SOUND_FILES = ("lose_1.wav", "lose_2.wav", "lose_3.wav")
 
 
 class BitcoinPredictionGame(arcade.Window):
@@ -141,6 +145,8 @@ class BitcoinPredictionGame(arcade.Window):
         self._chart_geometry_dirty = True
         self._chart_prices_dirty = True
         self.news_cards = choose_news_cards(ALL_NEWS, count=MAX_PLAYER_NEWS_ARTICLES)
+        self.win_sounds = self._load_sound_set(WIN_SOUND_FILES)
+        self.lose_sounds = self._load_sound_set(LOSE_SOUND_FILES)
         self.market = self._new_market()
         self.set_mouse_visible(False)
 
@@ -173,6 +179,17 @@ class BitcoinPredictionGame(arcade.Window):
 
     def _max_news_purchases_this_round(self) -> int:
         return max(0, self._max_news_articles_this_round() - 1)
+
+    def _next_article_price(self) -> int | None:
+        if self.news_articles_purchased >= len(NEWS_ARTICLE_SHOP_PRICES):
+            return None
+        return NEWS_ARTICLE_SHOP_PRICES[self.news_articles_purchased]
+
+    def _locked_slot_price(self, article_number: int) -> int | None:
+        purchase_index = article_number - 2
+        if purchase_index < 0 or purchase_index >= len(NEWS_ARTICLE_SHOP_PRICES):
+            return None
+        return NEWS_ARTICLE_SHOP_PRICES[purchase_index]
 
     def _new_market(self, demo_mode: bool = False) -> MarketState:
         self.tick_accumulator = 0.0
@@ -236,6 +253,30 @@ class BitcoinPredictionGame(arcade.Window):
             self.status_message = f"{call_name}, choose a side, enter an amount, then buy to start the market."
 
         return build_market(self.news_cards)
+
+    def _load_sound_set(self, file_names: tuple[str, ...]) -> list[arcade.Sound]:
+        sounds: list[arcade.Sound] = []
+        for file_name in file_names:
+            sound_path = SOUNDS_DIR / file_name
+            try:
+                sounds.append(arcade.load_sound(str(sound_path)))
+            except Exception:
+                continue
+        return sounds
+
+    def _play_outcome_sound(self, kind: str) -> None:
+        if kind == "win":
+            pool = self.win_sounds
+        elif kind == "loss":
+            pool = self.lose_sounds
+        else:
+            return
+        if not pool:
+            return
+        try:
+            arcade.play_sound(random.choice(pool), volume=0.9)
+        except Exception:
+            return
 
     def _start_demo_round(self) -> None:
         self.demo_round_active = True
@@ -450,6 +491,7 @@ class BitcoinPredictionGame(arcade.Window):
         self.result_popup_timer = RESULT_POPUP_DURATION
         self.result_popup_amount = amount
         self.result_popup_side = winning_side
+        self._play_outcome_sound(kind)
 
     def _record_trade(self, winning_side: str, profit_loss: float) -> None:
         if self.position is None:
@@ -546,6 +588,7 @@ class BitcoinPredictionGame(arcade.Window):
         call_name = self._player_call_name()
         max_articles = self._max_news_articles_this_round()
         max_purchases = self._max_news_purchases_this_round()
+        next_price = self._next_article_price()
         if self.news_articles_purchased >= max_purchases:
             self.status_message = (
                 f"{call_name}, max article purchases reached ({max_purchases})."
@@ -565,17 +608,21 @@ class BitcoinPredictionGame(arcade.Window):
                 f"You already unlocked {self.unlocked_news_cards} of {max_articles} articles.",
             )
             return
+        if next_price is None:
+            self.status_message = f"{call_name}, no article tiers left to buy."
+            self._trigger_issue_popup("Purchase Limit Reached", "No article price tiers remain this round.")
+            return
 
         available_balance = self._available_balance()
-        if available_balance < NEWS_ARTICLE_SHOP_PRICE:
+        if available_balance < next_price:
             self.status_message = (
                 f"{call_name}, not enough cash for another article. "
-                f"Need {self._format_money(float(NEWS_ARTICLE_SHOP_PRICE))}."
+                f"Need {self._format_money(float(next_price))}."
             )
             self._trigger_issue_popup(
                 "Not Enough Cash",
                 (
-                    f"Article cost: {self._format_money(float(NEWS_ARTICLE_SHOP_PRICE))}. "
+                    f"Article cost: {self._format_money(float(next_price))}. "
                     f"Available: {self._format_money(available_balance)}."
                 ),
             )
@@ -583,13 +630,14 @@ class BitcoinPredictionGame(arcade.Window):
 
         self._clear_issue_popup()
         if self.demo_round_active:
-            self.demo_balance -= NEWS_ARTICLE_SHOP_PRICE
+            self.demo_balance -= next_price
         else:
-            self.balance -= NEWS_ARTICLE_SHOP_PRICE
+            self.balance -= next_price
         self.unlocked_news_cards += 1
         self.news_articles_purchased += 1
         self.status_message = (
-            f"{call_name}, article unlocked ({self.unlocked_news_cards}/{max_articles}). "
+            f"{call_name}, article unlocked for {self._format_money(float(next_price))} "
+            f"({self.unlocked_news_cards}/{max_articles}). "
             "More market context is now visible."
         )
         self._check_game_loss_state()
@@ -1586,10 +1634,12 @@ class BitcoinPredictionGame(arcade.Window):
         max_purchases = self._max_news_purchases_this_round()
         unlocked = min(self.unlocked_news_cards, max_articles)
         current_balance = self._available_balance()
+        next_price = self._next_article_price()
         shop_disabled = (
             self.news_articles_purchased >= max_purchases
             or unlocked >= max_articles
-            or current_balance < NEWS_ARTICLE_SHOP_PRICE
+            or next_price is None
+            or current_balance < next_price
         )
 
         stat_cards = [
@@ -1611,13 +1661,17 @@ class BitcoinPredictionGame(arcade.Window):
             buy_color = GREEN
         arcade.draw_lbwh_rectangle_filled(buy_zone.left, buy_zone.bottom, buy_zone.width, buy_zone.height, buy_color)
         arcade.draw_lbwh_rectangle_outline(buy_zone.left, buy_zone.bottom, buy_zone.width, buy_zone.height, BORDER, 1)
-        buy_label = f"Buy Article (${NEWS_ARTICLE_SHOP_PRICE})"
+        buy_label = (
+            f"Buy Article ({self._format_money(float(next_price))})"
+            if next_price is not None
+            else "Article Limit Reached"
+        )
         buy_label_color = TEXT if not shop_disabled else MUTED
-        if self.news_articles_purchased >= max_purchases or unlocked >= max_articles:
+        if self.news_articles_purchased >= max_purchases or unlocked >= max_articles or next_price is None:
             buy_label = "Article Limit Reached"
             buy_label_color = MUTED
-        elif current_balance < NEWS_ARTICLE_SHOP_PRICE:
-            shortfall = max(0.0, float(NEWS_ARTICLE_SHOP_PRICE) - current_balance)
+        elif current_balance < next_price:
+            shortfall = max(0.0, float(next_price) - current_balance)
             buy_label = f"Need ${int(math.ceil(shortfall)):,} more"
             buy_label_color = ORANGE
         arcade.draw_text(
@@ -1636,6 +1690,7 @@ class BitcoinPredictionGame(arcade.Window):
             f"Starter slot is always the highest-reliability article (80%+).",
             f"Round cap: 1 starter + up to {max_purchases} purchased articles.",
             f"Drop below {self._format_money(float(GAME_OVER_BALANCE_THRESHOLD))} and you lose the run.",
+            "Price tiers: $1,000, then $2,000, then $3,000.",
         ]
         for index, line in enumerate(helper_lines):
             arcade.draw_text(line, panel_left + 34, panel_bottom + panel_height - 346 - index * 26, MUTED, 13)
@@ -2590,6 +2645,7 @@ class BitcoinPredictionGame(arcade.Window):
         arcade.draw_lbwh_rectangle_filled(left, bottom, width, height, PANEL_ALT)
         arcade.draw_lbwh_rectangle_outline(left, bottom, width, height, BORDER, 1)
         arcade.draw_lbwh_rectangle_filled(left, bottom + height - 8, width, 8, SKIP_RED_DISABLED)
+        lock_price = self._locked_slot_price(article_number)
         arcade.draw_text(
             f"Article {article_number} Locked",
             left + width / 2,
@@ -2600,7 +2656,11 @@ class BitcoinPredictionGame(arcade.Window):
             anchor_x="center",
         )
         arcade.draw_text(
-            f"Buy from shop for ${NEWS_ARTICLE_SHOP_PRICE}",
+            (
+                f"Buy from shop for {self._format_money(float(lock_price))}"
+                if lock_price is not None
+                else "Unlock from shop"
+            ),
             left + width / 2,
             bottom + height / 2 - 8,
             MUTED_DARK,
