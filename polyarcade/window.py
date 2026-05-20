@@ -119,6 +119,8 @@ class BitcoinPredictionGame(arcade.Window):
         self.selected_amount = 0
         self.amount_input_text = ""
         self.amount_input_active = False
+        self.position_entry_seconds_total = 0
+        self.position_entry_seconds_remaining = 0.0
         self.position: Position | None = None
         self.trade_history: list[TradeRecord] = []
         self.dashboard_active = False
@@ -191,6 +193,15 @@ class BitcoinPredictionGame(arcade.Window):
     def _max_news_purchases_this_round(self) -> int:
         return max(0, self._max_news_articles_this_round() - 1)
 
+    def _position_entry_window_seconds(self) -> int:
+        if self.balance >= 7500:
+            return 15
+        if self.balance >= 5000:
+            return 20
+        if self.balance >= 3000:
+            return 25
+        return 30
+
     def _minimum_order_amount(self, available_balance: float | None = None) -> int:
         if available_balance is None:
             available_balance = self._available_balance()
@@ -215,6 +226,38 @@ class BitcoinPredictionGame(arcade.Window):
         current_day = min(SIMULATION_DAYS_LIMIT, self.simulation_days_completed + 1)
         return f"Day {current_day}/{SIMULATION_DAYS_LIMIT}"
 
+    def _handle_position_entry_timeout(self) -> None:
+        if self.demo_round_active or self.market.active or self.market.settled or self.position is not None:
+            return
+        if self.game_over_active or self.game_won_active:
+            return
+
+        window_used = self.position_entry_seconds_total
+        self.market.active = False
+        self.market.settled = True
+        self.market.current_price = self.market.resolve_price
+        self.market.history.append(self.market.current_price)
+        self._mark_chart_dirty()
+        self.position_entry_seconds_remaining = 0.0
+        self.selected_side = ""
+        self.selected_amount = 0
+        self.amount_input_text = ""
+        self.amount_input_active = False
+        self._advance_simulation_day()
+        self.status_message = (
+            f"{self._player_call_name()}, order window expired after {window_used} seconds. "
+            "No position was placed for this day."
+        )
+        self._trigger_issue_popup(
+            "Order Window Expired",
+            (
+                f"You had {window_used} seconds to place a position. "
+                "Day advanced with no trade. Click New Market."
+            ),
+        )
+        self._hover_refresh_needed = True
+        self._check_game_loss_state()
+
     def _next_article_price(self) -> int | None:
         if self.news_articles_purchased >= self._max_news_purchases_this_round():
             return None
@@ -238,6 +281,8 @@ class BitcoinPredictionGame(arcade.Window):
         self.result_popup_amount = 0.0
         self.result_popup_side = ""
         self.insider_activation_prompt_active = False
+        self.position_entry_seconds_total = 0
+        self.position_entry_seconds_remaining = 0.0
         self._clear_issue_popup()
         self._chart_prices_cache = []
         self._chart_geometry_cache = None
@@ -277,9 +322,13 @@ class BitcoinPredictionGame(arcade.Window):
         if demo_mode:
             self.unlocked_news_cards = min(3, self._max_news_articles_this_round())
             self.news_articles_purchased = max(0, self.unlocked_news_cards - 1)
+            self.position_entry_seconds_total = 0
+            self.position_entry_seconds_remaining = 0.0
         else:
             self.unlocked_news_cards = 1
             self.news_articles_purchased = 0
+            self.position_entry_seconds_total = self._position_entry_window_seconds()
+            self.position_entry_seconds_remaining = float(self.position_entry_seconds_total)
 
         call_name = self._player_call_name()
         if demo_mode:
@@ -290,7 +339,8 @@ class BitcoinPredictionGame(arcade.Window):
         else:
             self.status_message = (
                 f"{call_name}, choose a side, enter an amount, then buy to start the market. "
-                f"Minimum stake is {self._format_money(float(self._minimum_order_amount(self.balance)))} (10%)."
+                f"Minimum stake is {self._format_money(float(self._minimum_order_amount(self.balance)))} (10%). "
+                f"You have {self.position_entry_seconds_total} seconds to place this day's position."
             )
 
         return build_market(self.news_cards)
@@ -335,7 +385,8 @@ class BitcoinPredictionGame(arcade.Window):
         self.status_message = (
             f"{self._player_call_name()}, demo done. "
             f"Now complete {SIMULATION_DAYS_LIMIT} real simulation days and reach "
-            f"{self._format_money(float(WIN_BALANCE_TARGET))}."
+            f"{self._format_money(float(WIN_BALANCE_TARGET))}. "
+            f"You have {self.position_entry_seconds_total} seconds to place this day's position."
         )
 
     def _sync_selected_amount_from_text(self) -> None:
@@ -443,6 +494,18 @@ class BitcoinPredictionGame(arcade.Window):
                 1.0,
                 self.market_transition + animation_delta * MARKET_TRANSITION_SPEED,
             )
+
+        if (
+            not self.demo_round_active
+            and not self.market.active
+            and not self.market.settled
+            and self.position is None
+            and self.position_entry_seconds_remaining > 0.0
+        ):
+            self.position_entry_seconds_remaining = max(0.0, self.position_entry_seconds_remaining - delta_time)
+            if self.position_entry_seconds_remaining <= 0.0:
+                self._handle_position_entry_timeout()
+                return
 
         if not self.market.active or self.market.settled:
             return
@@ -1129,6 +1192,7 @@ class BitcoinPredictionGame(arcade.Window):
             shares=shares,
         )
         self.market.active = True
+        self.position_entry_seconds_remaining = 0.0
         if self.demo_round_active:
             self.status_message = (
                 f"{call_name}, demo order placed: {self.selected_side} at {entry_price}c. "
@@ -1238,6 +1302,19 @@ class BitcoinPredictionGame(arcade.Window):
                 self.tutorial_active = False
                 self.market_transition = 1.0
                 self._start_demo_round()
+                self._hover_refresh_needed = True
+            elif clicked_key == "tutorial_skip_demo":
+                self.tutorial_active = False
+                self.market_transition = 1.0
+                self.demo_round_active = False
+                self.demo_round_complete = False
+                self.demo_side_picked = False
+                self.demo_amount_picked = False
+                self.market = self._new_market()
+                self.status_message = (
+                    f"{self._player_call_name()}, guided demo skipped. "
+                    f"You now have {self.position_entry_seconds_total} seconds to place this day's position."
+                )
                 self._hover_refresh_needed = True
             return
 
@@ -1635,7 +1712,8 @@ class BitcoinPredictionGame(arcade.Window):
         arcade.draw_text(
             (
                 "Goal: reach $10,000 within 14 days. Follow this order every round: "
-                "1) click Up or Down, 2) type amount, 3) click Buy & Start."
+                "1) click Up or Down, 2) type amount, 3) click Buy & Start. "
+                "Use Skip Demo Round if you want to jump right into real markets."
             ),
             panel_left + 44,
             panel_bottom + panel_height - 106,
@@ -1684,8 +1762,14 @@ class BitcoinPredictionGame(arcade.Window):
             arcade.draw_text(target.detail, text_x, text_y - 18, MUTED, 12, width=200, multiline=True)
 
         continue_zone = ClickZone("tutorial_continue", panel_left + panel_width - 332, panel_bottom + 28, 290, 54)
+        skip_zone = ClickZone("tutorial_skip_demo", panel_left + panel_width - 642, panel_bottom + 28, 290, 54)
         self.click_zones.append(continue_zone)
+        self.click_zones.append(skip_zone)
         button_color = GREEN if self.hovered_key == "tutorial_continue" else GREEN_DARK
+        skip_color = PANEL_SOFT if self.hovered_key != "tutorial_skip_demo" else BLUE
+        arcade.draw_lbwh_rectangle_filled(skip_zone.left, skip_zone.bottom, skip_zone.width, skip_zone.height, skip_color)
+        arcade.draw_lbwh_rectangle_outline(skip_zone.left, skip_zone.bottom, skip_zone.width, skip_zone.height, BORDER, 1)
+        arcade.draw_text("Skip Demo Round", skip_zone.center_x, skip_zone.center_y + 1, TEXT, 17, bold=True, anchor_x="center", anchor_y="center")
         arcade.draw_lbwh_rectangle_filled(continue_zone.left, continue_zone.bottom, continue_zone.width, continue_zone.height, button_color)
         arcade.draw_lbwh_rectangle_outline(continue_zone.left, continue_zone.bottom, continue_zone.width, continue_zone.height, BORDER, 1)
         arcade.draw_text("Start Guided Demo Round", continue_zone.center_x, continue_zone.center_y + 1, TEXT, 17, bold=True, anchor_x="center", anchor_y="center")
@@ -2423,7 +2507,20 @@ class BitcoinPredictionGame(arcade.Window):
         arcade.draw_text("MINS", left + width - 112, stats_y - 48, MUTED, 10, bold=True, anchor_x="center")
         arcade.draw_text("SECS", left + width - 54, stats_y - 48, MUTED, 10, bold=True, anchor_x="center")
         if not self.market.active and not self.market.settled:
-            arcade.draw_text("WAITING", left + width - 84, stats_y + 15, YELLOW, 12, bold=True, anchor_x="center")
+            if not self.demo_round_active and self.position is None and self.position_entry_seconds_remaining > 0.0:
+                place_seconds = int(math.ceil(self.position_entry_seconds_remaining))
+                place_color = RED if place_seconds <= 5 else YELLOW
+                arcade.draw_text(
+                    f"{place_seconds:02d}S TO ENTER",
+                    left + width - 84,
+                    stats_y + 15,
+                    place_color,
+                    12,
+                    bold=True,
+                    anchor_x="center",
+                )
+            else:
+                arcade.draw_text("WAITING", left + width - 84, stats_y + 15, YELLOW, 12, bold=True, anchor_x="center")
 
         self._draw_progress_bar(left, bottom + height - 202, width - 24, 6)
         self._draw_chart(left, bottom + 44, width, 252)
@@ -2582,6 +2679,17 @@ class BitcoinPredictionGame(arcade.Window):
             anchor_x="right",
             anchor_y="center",
         )
+        if not self.demo_round_active and not self.market.active and not self.market.settled and self.position is None:
+            place_seconds = int(math.ceil(self.position_entry_seconds_remaining))
+            place_color = RED if place_seconds <= 5 else ORANGE
+            arcade.draw_text(
+                f"Place trade in {place_seconds}s",
+                left + 26,
+                bottom + height - 66,
+                place_color,
+                11,
+                bold=True,
+            )
         if self.demo_round_active:
             demo_ticket_left = left + 26
             demo_ticket_bottom = bottom + height - 82
