@@ -2538,7 +2538,7 @@ class BitcoinPredictionGame(arcade.Window):
                 place_seconds = int(math.ceil(self.position_entry_seconds_remaining))
                 place_color = RED if place_seconds <= 5 else YELLOW
                 arcade.draw_text(
-                    f"{place_seconds:02d}S TO ENTER",
+                    f"PLACE TRADE IN {place_seconds:02d}S",
                     left + width - 84,
                     stats_y + 15,
                     place_color,
@@ -2706,17 +2706,6 @@ class BitcoinPredictionGame(arcade.Window):
             anchor_x="right",
             anchor_y="center",
         )
-        if not self.demo_round_active and not self.market.active and not self.market.settled and self.position is None:
-            place_seconds = int(math.ceil(self.position_entry_seconds_remaining))
-            place_color = RED if place_seconds <= 5 else ORANGE
-            arcade.draw_text(
-                f"Place trade in {place_seconds}s",
-                left + 26,
-                bottom + height - 66,
-                place_color,
-                11,
-                bold=True,
-            )
         if self.demo_round_active:
             demo_ticket_left = left + 26
             demo_ticket_bottom = bottom + height - 82
