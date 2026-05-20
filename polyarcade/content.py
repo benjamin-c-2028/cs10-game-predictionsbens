@@ -259,6 +259,6 @@ TUTORIAL_CLICK_TARGETS = [
     TutorialClickTarget(
         "Buy",
         "Launch the round",
-        "Buy & Start opens the 15-second market timer.",
+        "Buy & Start opens the 15-second market timer. If you wait too long before buying, the trade clock can expire.",
     ),
 ]

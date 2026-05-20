@@ -17,6 +17,8 @@ In the end we veered away from doing other topics that weren't Bitcoin, as Bitco
 ## Screenshots
 
 ![Screenshot 1](./screenshot%201.png)
+![Screenshot 2](./screenshot%202.png)
+![Screenshot 3](./screenshot%203.png)
 
 ## How to Install & Play
 

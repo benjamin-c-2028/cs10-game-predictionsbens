@@ -17,7 +17,6 @@ from .constants import (
     GAME_OVER_BALANCE_THRESHOLD,
     HEADER,
     INSIDER_EAR_UNLOCK_PRICE,
-    INSIDER_EAR_WHISPER_PRICE,
     MARKET_DURATION_SECONDS,
     MARKET_TRANSITION_SPEED,
     MAX_NEWS_ARTICLE_PURCHASES,
@@ -41,6 +40,7 @@ from .constants import (
     SIMULATION_DAYS_LIMIT,
     SKIP_LIMIT,
     STARTING_BALANCE,
+    TIMEOUT_PENALTY_DOLLARS,
     TEXT,
     WHITE,
     WIN_BALANCE_TARGET,
@@ -68,6 +68,7 @@ TEXT_CARET_VISIBLE_RATIO = 0.64
 PAGE_SWITCH_SPEED = 7.2
 RESULT_POPUP_DURATION = 2.4
 ISSUE_POPUP_DURATION = 3.2
+TIMEOUT_LOSS_OVERLAY_DURATION = 3.0
 CHART_SMOOTHING_WINDOW = 5
 ALL_IN_GOLD = (214, 167, 49)
 ALL_IN_GOLD_HOVER = (236, 190, 74)
@@ -113,7 +114,6 @@ class BitcoinPredictionGame(arcade.Window):
         self.insider_tip_text = "Insider Ear not unlocked yet."
         self.insider_tip_side = ""
         self.insider_tip_confidence = 0
-        self.insider_suspicion = 0.0
         self.game_over_active = False
         self.game_won_active = False
         self.game_over_title = "GAME OVER"
@@ -156,6 +156,9 @@ class BitcoinPredictionGame(arcade.Window):
         self.issue_popup_title = ""
         self.issue_popup_message = ""
         self.issue_popup_timer = 0.0
+        self.timeout_loss_overlay_timer = 0.0
+        self.timeout_loss_penalty = 0.0
+        self.timeout_loss_window_used = 0
         self.insider_activation_prompt_active = False
         self._hover_refresh_needed = True
         self._chart_prices_cache: list[float] = []
@@ -257,22 +260,18 @@ class BitcoinPredictionGame(arcade.Window):
         self.selected_amount = 0
         self.amount_input_text = ""
         self.amount_input_active = False
-        penalty = round(float(self.balance) * 0.20, 2)
+        penalty = round(min(float(self.balance), float(TIMEOUT_PENALTY_DOLLARS)), 2)
         self.balance = round(max(0.0, float(self.balance) - penalty), 2)
+        self.timeout_loss_penalty = penalty
+        self.timeout_loss_window_used = window_used
+        self.timeout_loss_overlay_timer = TIMEOUT_LOSS_OVERLAY_DURATION
         self._advance_simulation_day()
         self.status_message = (
             f"{self._player_call_name()}, order window expired after {window_used} seconds. "
             f"No position was placed for this day. "
-            f"You lost {self._format_money(penalty)} (20% inactivity penalty)."
+            f"You lost {self._format_money(penalty)} for not acting before the clock hit 0."
         )
-        self._trigger_issue_popup(
-            "Order Window Expired",
-            (
-                f"You had {window_used} seconds to place a position. "
-                f"Day advanced with no trade, and you lost {self._format_money(penalty)} "
-                "(20% of your net worth). Click New Market."
-            ),
-        )
+        self._clear_issue_popup()
         self._hover_refresh_needed = True
         self._check_game_loss_state()
 
@@ -301,6 +300,9 @@ class BitcoinPredictionGame(arcade.Window):
         self.insider_activation_prompt_active = False
         self.position_entry_seconds_total = 0
         self.position_entry_seconds_remaining = 0.0
+        self.timeout_loss_overlay_timer = 0.0
+        self.timeout_loss_penalty = 0.0
+        self.timeout_loss_window_used = 0
         self._clear_issue_popup()
         self._chart_prices_cache = []
         self._chart_geometry_cache = None
@@ -316,7 +318,6 @@ class BitcoinPredictionGame(arcade.Window):
             self.insider_tip_text = "Insider Ear inactive for this market."
             self.insider_tip_side = ""
             self.insider_tip_confidence = 0
-            self.insider_suspicion = max(0.0, self.insider_suspicion - 0.08)
         if demo_mode:
             self.selected_side = ""
             self.selected_amount = 0
@@ -350,8 +351,14 @@ class BitcoinPredictionGame(arcade.Window):
             self.position_entry_seconds_total = 0
             self.position_entry_seconds_remaining = 0.0
         else:
-            self.unlocked_news_cards = 1
-            self.news_articles_purchased = 0
+            max_articles = self._max_news_articles_this_round()
+            max_purchases = self._max_news_purchases_this_round()
+            # Real-market article unlocks persist across markets in the same run.
+            self.unlocked_news_cards = max(1, min(self.unlocked_news_cards, max_articles))
+            self.news_articles_purchased = max(
+                0,
+                min(self.news_articles_purchased, max_purchases, self.unlocked_news_cards - 1),
+            )
             self.position_entry_seconds_total = self._position_entry_window_seconds()
             self.position_entry_seconds_remaining = float(self.position_entry_seconds_total)
 
@@ -406,6 +413,8 @@ class BitcoinPredictionGame(arcade.Window):
         self.demo_side_picked = False
         self.demo_amount_picked = False
         self.demo_balance = STARTING_BALANCE
+        self.unlocked_news_cards = 1
+        self.news_articles_purchased = 0
         self.market = self._new_market()
         self.status_message = (
             f"{self._player_call_name()}, demo done. "
@@ -483,6 +492,7 @@ class BitcoinPredictionGame(arcade.Window):
         self._draw_news_cards()
         self._draw_transition_overlay()
         self._draw_result_popup()
+        self._draw_timeout_loss_overlay()
         self._draw_issue_popup()
         self._draw_insider_activation_confirm_popup()
         self._draw_game_over_overlay()
@@ -505,6 +515,8 @@ class BitcoinPredictionGame(arcade.Window):
             self.issue_popup_timer = max(0.0, self.issue_popup_timer - delta_time)
             if self.issue_popup_timer <= 0.0:
                 self._clear_issue_popup()
+        if self.timeout_loss_overlay_timer > 0.0:
+            self.timeout_loss_overlay_timer = max(0.0, self.timeout_loss_overlay_timer - delta_time)
         if self.page_transition_progress < 1.0:
             self.page_transition_progress = min(
                 1.0,
@@ -750,13 +762,13 @@ class BitcoinPredictionGame(arcade.Window):
             )
             self._trigger_issue_popup(
                 "Purchase Limit Reached",
-                f"You can buy at most {max_purchases} extra articles this round.",
+                f"You can buy at most {max_purchases} extra articles in this run.",
             )
             return
         if self.unlocked_news_cards >= max_articles:
             self.status_message = (
                 f"{call_name}, article cap reached. "
-                f"You can only hold {max_articles} articles this round."
+                f"You can only hold {max_articles} articles in this run."
             )
             self._trigger_issue_popup(
                 "Article Limit Reached",
@@ -765,7 +777,7 @@ class BitcoinPredictionGame(arcade.Window):
             return
         if next_price is None:
             self.status_message = f"{call_name}, no article tiers left to buy."
-            self._trigger_issue_popup("Purchase Limit Reached", "No article price tiers remain this round.")
+            self._trigger_issue_popup("Purchase Limit Reached", "No article price tiers remain in this run.")
             return
         if self._first_article_locked_by_day():
             self.status_message = (
@@ -803,7 +815,7 @@ class BitcoinPredictionGame(arcade.Window):
         self.status_message = (
             f"{call_name}, article unlocked for {self._format_money(float(next_price))} "
             f"({self.unlocked_news_cards}/{max_articles}). "
-            "More market context is now visible."
+            "More market context is now permanently visible for this run."
         )
         self._check_game_loss_state()
 
@@ -848,15 +860,6 @@ class BitcoinPredictionGame(arcade.Window):
             "Protection armed for one use. On first trigger below $100, it restores to $1,000 then expires.",
         )
         self._check_game_loss_state()
-
-    def _current_suspicion_label(self) -> str:
-        if self.insider_suspicion < 0.25:
-            return "Not Suspicious"
-        if self.insider_suspicion < 0.5:
-            return "Questionable"
-        if self.insider_suspicion < 0.75:
-            return "Suspicious"
-        return "Very Suspicious"
 
     def _buy_insider_ear(self) -> None:
         call_name = self._player_call_name()
@@ -940,7 +943,7 @@ class BitcoinPredictionGame(arcade.Window):
             self.status_message = f"{call_name}, Insider Ear is already active for this market."
             self._trigger_issue_popup(
                 "Already Active",
-                f"The insider already highly smiles upon {self.insider_tip_side} this round.",
+                f"Insider call is already set to {self.insider_tip_side} this round.",
             )
             return
 
@@ -959,82 +962,15 @@ class BitcoinPredictionGame(arcade.Window):
         true_side = "Up" if self.market.resolve_price >= self.market.target_price else "Down"
         self.insider_tip_side = true_side
         self.insider_tip_confidence = 99
-        self.insider_tip_text = f"Insider highly smiles upon {true_side}. This call is correct."
+        self.insider_tip_text = f"Insider call: {true_side}. This call is correct."
         self.status_message = (
-            f"{self._player_call_name()}, insider highly smiles upon {true_side}. "
+            f"{self._player_call_name()}, insider call is {true_side}. "
             "That call is guaranteed correct for this market."
         )
         self._trigger_issue_popup(
             "Insider Ear Activated",
-            f"Insider highly smiles upon {true_side}.",
+            f"Insider call: {true_side}.",
         )
-
-    def _buy_insider_whisper(self) -> None:
-        call_name = self._player_call_name()
-        if self.demo_round_active:
-            self.status_message = f"{call_name}, insider whispers are disabled in demo."
-            self._trigger_issue_popup(
-                "Demo Mode",
-                "Insider whispers are only available in the real practice market.",
-            )
-            return
-        if not self.insider_ear_owned:
-            self.status_message = f"{call_name}, unlock Insider Ear first."
-            self._trigger_issue_popup(
-                "Locked",
-                (
-                    "Unlock Insider Ear first for "
-                    f"{self._format_money(float(INSIDER_EAR_UNLOCK_PRICE))}."
-                ),
-            )
-            return
-        if self.market.settled:
-            self.status_message = f"{call_name}, this market is settled. Start a new market first."
-            self._trigger_issue_popup(
-                "Market Settled",
-                "Start a new market before buying an insider whisper.",
-            )
-            return
-        if self.balance < INSIDER_EAR_WHISPER_PRICE:
-            self.status_message = (
-                f"{call_name}, not enough cash for an insider whisper. "
-                f"Need {self._format_money(float(INSIDER_EAR_WHISPER_PRICE))}."
-            )
-            self._trigger_issue_popup(
-                "Not Enough Cash",
-                (
-                    f"Whisper price: {self._format_money(float(INSIDER_EAR_WHISPER_PRICE))}. "
-                    f"Available: {self._format_money(self.balance)}."
-                ),
-            )
-            return
-
-        self.balance -= INSIDER_EAR_WHISPER_PRICE
-
-        true_side = "Up" if self.market.resolve_price >= self.market.target_price else "Down"
-        hinted_side = true_side
-        confidence = 99
-        self.insider_tip_side = hinted_side
-        self.insider_tip_confidence = confidence
-
-        self.insider_suspicion = min(1.0, self.insider_suspicion + 0.05)
-        suspicion_label = self._current_suspicion_label()
-        self.insider_tip_text = (
-            f"Insider whisper: '{hinted_side}' is favored ({confidence}% confidence). "
-            f"Demeanor: {suspicion_label}."
-        )
-        self.status_message = (
-            f"{call_name}, insider whisper purchased: {hinted_side} favored "
-            f"({confidence}% confidence). Demeanor is now {suspicion_label.lower()}."
-        )
-        self._trigger_issue_popup(
-            "Insider Whisper Received",
-            (
-                f"Insider says '{hinted_side}' ({confidence}% confidence). "
-                f"Demeanor: {suspicion_label}."
-            ),
-        )
-        self._check_game_loss_state()
 
     def _check_game_loss_state(self) -> None:
         if self.demo_round_active or self.game_over_active or self.game_won_active:
@@ -1145,7 +1081,6 @@ class BitcoinPredictionGame(arcade.Window):
         self.insider_tip_text = "Insider Ear not unlocked yet."
         self.insider_tip_side = ""
         self.insider_tip_confidence = 0
-        self.insider_suspicion = 0.0
         self.real_market_up_total = 0
         self.real_market_down_total = 0
         self.trade_history.clear()
@@ -1300,6 +1235,9 @@ class BitcoinPredictionGame(arcade.Window):
 
         if self.issue_popup_timer > 0.0:
             self._clear_issue_popup()
+            return
+        if self.timeout_loss_overlay_timer > 0.0:
+            self.timeout_loss_overlay_timer = 0.0
             return
 
         self.cursor_click_flash = 1.0
@@ -1740,18 +1678,36 @@ class BitcoinPredictionGame(arcade.Window):
             (
                 "Goal: reach $10,000 within 14 days. Follow this order every round: "
                 "1) click Up or Down, 2) type amount, 3) click Buy & Start. "
+                f"The red trade clock gives you {self._position_entry_window_seconds()} seconds to act. "
                 "Use Skip Demo Round if you want to jump right into real markets."
             ),
             panel_left + 44,
             panel_bottom + panel_height - 106,
             MUTED,
             14,
-            width=760,
+            width=1060,
+            multiline=True,
+        )
+
+        warning_left = panel_left + 44
+        warning_bottom = panel_bottom + panel_height - 200
+        warning_width = 1060
+        warning_height = 48
+        arcade.draw_lbwh_rectangle_filled(warning_left, warning_bottom, warning_width, warning_height, (60, 28, 28))
+        arcade.draw_lbwh_rectangle_outline(warning_left, warning_bottom, warning_width, warning_height, RED, 1)
+        arcade.draw_text(
+            f"Clock rule: if the trade timer hits 00:00 before Buy & Start, you auto-lose {self._format_money(float(TIMEOUT_PENALTY_DOLLARS))}.",
+            warning_left + 14,
+            warning_bottom + 14,
+            TEXT,
+            12,
+            bold=True,
+            width=warning_width - 28,
             multiline=True,
         )
 
         article_left = panel_left + 42
-        article_top = panel_bottom + panel_height - 152
+        article_top = panel_bottom + panel_height - 246
         for index, article in enumerate(SIMPLE_TUTORIAL_ARTICLES):
             top = article_top - index * 126
             arcade.draw_lbwh_rectangle_filled(article_left, top - 96, 560, 104, PANEL_ALT)
@@ -1783,10 +1739,10 @@ class BitcoinPredictionGame(arcade.Window):
 
         for index, target in enumerate(TUTORIAL_CLICK_TARGETS):
             text_x = guide_left + 32
-            text_y = guide_bottom + 302 - index * 100
+            text_y = guide_bottom + 314 - index * 112
             arcade.draw_text(target.button_label, text_x, text_y + 30, BLUE, 12, bold=True)
             arcade.draw_text(target.title, text_x, text_y + 7, TEXT, 16, bold=True)
-            arcade.draw_text(target.detail, text_x, text_y - 18, MUTED, 12, width=200, multiline=True)
+            arcade.draw_text(target.detail, text_x, text_y - 18, MUTED, 12, width=230, multiline=True)
 
         continue_zone = ClickZone("tutorial_continue", panel_left + panel_width - 332, panel_bottom + 28, 290, 54)
         skip_zone = ClickZone("tutorial_skip_demo", panel_left + panel_width - 642, panel_bottom + 28, 290, 54)
@@ -2017,7 +1973,13 @@ class BitcoinPredictionGame(arcade.Window):
             arcade.draw_text(label, card_left + 16, panel_bottom + panel_height - 154, MUTED, 12, bold=True)
             arcade.draw_text(value, card_left + 16, panel_bottom + panel_height - 190, value_color, 24, bold=True)
 
-        buy_zone = ClickZone("shop_buy_article", panel_left + 32, panel_bottom + panel_height - 290, 420, 62)
+        buy_zone = ClickZone(
+            "shop_buy_article",
+            panel_left + 32,
+            panel_bottom + panel_height - 290,
+            panel_width - 64,
+            62,
+        )
         self.click_zones.append(buy_zone)
         buy_color = PANEL_SOFT if shop_disabled else GREEN_DARK
         if self.hovered_key == "shop_buy_article" and not shop_disabled:
@@ -2053,7 +2015,7 @@ class BitcoinPredictionGame(arcade.Window):
 
         active_price_tiers = NEWS_ARTICLE_SHOP_PRICES[:max_purchases]
         if not active_price_tiers:
-            tier_line = "Price tiers: no article purchases available this round."
+            tier_line = "Price tiers: no article purchases available in this run."
         elif len(active_price_tiers) == 1:
             tier_line = f"Price tier: {self._format_money(float(active_price_tiers[0]))}."
         else:
@@ -2062,9 +2024,9 @@ class BitcoinPredictionGame(arcade.Window):
             ) + "."
 
         helper_lines = [
-            f"Each buy unlocks one new article slot for this round only.",
+            f"Each buy unlocks one new article slot permanently for this run.",
             f"Starter slot is always the highest-reliability article (80%+).",
-            f"Round cap: 1 starter + up to {max_purchases} purchased articles.",
+            f"Run cap: 1 starter + up to {max_purchases} purchased articles.",
             f"First purchase unlocks after 1 completed simulation day.",
             f"Saving Grace is one-use only per purchase.",
             f"Drop below {self._format_money(float(GAME_OVER_BALANCE_THRESHOLD))} and you lose the run.",
@@ -2087,18 +2049,31 @@ class BitcoinPredictionGame(arcade.Window):
         icon_center_y = saving_card_bottom + 116
         self._draw_saving_grace_icon(icon_center_x, icon_center_y, scale=0.85)
 
-        arcade.draw_text("In The Shop: Saving Grace", saving_card_left + 190, saving_card_bottom + 168, TEXT, 24, bold=True)
+        saving_text_left = saving_card_left + 190
+        saving_text_width = int(saving_card_width - 214)
+        arcade.draw_text(
+            "In The Shop: Saving Grace",
+            saving_text_left,
+            saving_card_bottom + 170,
+            TEXT,
+            20,
+            bold=True,
+            width=saving_text_width,
+            multiline=True,
+        )
         arcade.draw_text(
             "One-use only: if real balance drops below $100, it revives you to $1,000 once.",
-            saving_card_left + 190,
+            saving_text_left,
             saving_card_bottom + 136,
             MUTED,
-            13,
+            12,
+            width=saving_text_width,
+            multiline=True,
         )
         arcade.draw_text(
             f"Price: {self._format_money(float(SAVING_GRACE_SHOP_PRICE))}",
-            saving_card_left + 190,
-            saving_card_bottom + 104,
+            saving_text_left,
+            saving_card_bottom + 92,
             ORANGE,
             15,
             bold=True,
@@ -2208,7 +2183,7 @@ class BitcoinPredictionGame(arcade.Window):
         elif not self.insider_ear_owned:
             insider_text = "Unlock Insider Ear, then activate it from the Buy panel when needed."
         elif self.insider_tip_side:
-            insider_text = f"Activated this market. Insider highly smiles upon {self.insider_tip_side}."
+            insider_text = f"Activated this market. Insider call: {self.insider_tip_side}."
         else:
             insider_text = "Owned and saved. Activate Insider Ear from the Buy panel when ready."
         arcade.draw_text(
@@ -2461,21 +2436,11 @@ class BitcoinPredictionGame(arcade.Window):
         arcade.draw_lbwh_rectangle_filled(left, bottom + height - 74, 64, 64, ORANGE)
         arcade.draw_text("B", left + 32, bottom + height - 42, WHITE, 34, bold=True, anchor_x="center", anchor_y="center")
         arcade.draw_text("BTC Up or Down 15s", left + 88, bottom + height - 31, TEXT, 25, bold=True)
-        subtitle = "Pick a side, enter an amount, then watch $5 Bitcoin ticks for 15 seconds"
-        if self.demo_round_active and self.market.settled:
-            subtitle = "Guided demo finished. Your real practice balance did not change."
-        elif self.demo_round_active:
-            subtitle = "Guided demo round. This uses demo cash, not your real practice balance."
-        elif self.market.active:
-            subtitle = "Live simulated Bitcoin market"
-        elif self.market.settled:
-            subtitle = "Settled market"
-        arcade.draw_text(subtitle, left + 88, bottom + height - 61, MUTED, 14, bold=True)
         if not self.demo_round_active:
             arcade.draw_text(
                 f"{self._simulation_day_label()} | Goal: {self._format_money(float(WIN_BALANCE_TARGET))} by Day {SIMULATION_DAYS_LIMIT}",
                 left + 88,
-                bottom + height - 84,
+                bottom + height - 61,
                 MUTED,
                 11,
                 bold=True,
@@ -2527,27 +2492,50 @@ class BitcoinPredictionGame(arcade.Window):
         )
 
         remaining = int(math.ceil(max(0.0, MARKET_DURATION_SECONDS - self.market.elapsed_seconds)))
-        minutes, seconds = divmod(remaining, 60)
-        timer_color = MUTED if self.market.settled or not self.market.active else RED
-        arcade.draw_text(f"{minutes:02d}", left + width - 112, stats_y - 22, timer_color, 30, bold=True, anchor_x="center")
-        arcade.draw_text(f"{seconds:02d}", left + width - 54, stats_y - 22, timer_color, 30, bold=True, anchor_x="center")
-        arcade.draw_text("MINS", left + width - 112, stats_y - 48, MUTED, 10, bold=True, anchor_x="center")
-        arcade.draw_text("SECS", left + width - 54, stats_y - 48, MUTED, 10, bold=True, anchor_x="center")
-        if not self.market.active and not self.market.settled:
-            if not self.demo_round_active and self.position is None and self.position_entry_seconds_remaining > 0.0:
-                place_seconds = int(math.ceil(self.position_entry_seconds_remaining))
-                arcade.draw_text(
-                    f"PLACE TRADE IN {place_seconds:02d}S",
-                    left + width - 84,
-                    stats_y + 15,
-                    RED,
-                    12,
-                    bold=True,
-                    anchor_x="center",
-                )
-            else:
-                arcade.draw_text("WAITING", left + width - 84, stats_y + 15, YELLOW, 12, bold=True, anchor_x="center")
+        show_entry_timer = (
+            not self.demo_round_active
+            and not self.market.active
+            and not self.market.settled
+            and self.position is None
+            and self.position_entry_seconds_remaining > 0.0
+        )
+        timer_seconds = int(math.ceil(self.position_entry_seconds_remaining)) if show_entry_timer else remaining
+        minutes, seconds = divmod(max(0, timer_seconds), 60)
+        timer_label = "PLACE TRADE NOW" if show_entry_timer else "MARKET CLOCK"
+        if self.market.active:
+            timer_label = "LIVE ROUND"
+        elif self.market.settled:
+            timer_label = "SETTLED"
 
+        timer_box_left = left + width - 210
+        timer_box_bottom = stats_y - 42
+        timer_box_width = 188
+        timer_box_height = 96
+        timer_border = RED if show_entry_timer else BORDER
+        timer_bg = (52, 22, 22) if show_entry_timer else PANEL_ALT
+        timer_text_color = RED if show_entry_timer else (YELLOW if self.market.active else MUTED)
+        arcade.draw_lbwh_rectangle_filled(timer_box_left, timer_box_bottom, timer_box_width, timer_box_height, timer_bg)
+        arcade.draw_lbwh_rectangle_outline(timer_box_left, timer_box_bottom, timer_box_width, timer_box_height, timer_border, 2)
+        arcade.draw_text(
+            timer_label,
+            timer_box_left + timer_box_width / 2,
+            timer_box_bottom + timer_box_height - 18,
+            timer_text_color,
+            12,
+            bold=True,
+            anchor_x="center",
+            anchor_y="center",
+        )
+        arcade.draw_text(
+            f"{minutes:02d}:{seconds:02d}",
+            timer_box_left + timer_box_width / 2,
+            timer_box_bottom + 34,
+            timer_text_color,
+            42,
+            bold=True,
+            anchor_x="center",
+            anchor_y="center",
+        )
         self._draw_progress_bar(left, bottom + height - 202, width - 24, 6)
         self._draw_chart(left, bottom + 44, width, 252)
 
@@ -2820,7 +2808,7 @@ class BitcoinPredictionGame(arcade.Window):
         if self.demo_round_active:
             insider_hint_text = "Insider Ear is disabled during demo."
         elif self.insider_tip_side:
-            insider_hint_text = f"Insider highly smiles upon {self.insider_tip_side}."
+            insider_hint_text = f"Insider call: {self.insider_tip_side}."
             insider_hint_color = GREEN if self.insider_tip_side == "Up" else RED
         elif self.insider_ear_owned:
             insider_hint_text = "Insider Ear ready. Click Activate Ear when you want the call."
@@ -3027,18 +3015,24 @@ class BitcoinPredictionGame(arcade.Window):
         shown_balance = self.demo_balance if self.demo_round_active else self.balance
         arcade.draw_text(balance_label, left, top, MUTED, 12, bold=True)
         arcade.draw_text(f"${shown_balance:,.2f}", left, top - 28, TEXT, 22, bold=True)
-        arcade.draw_text(self.status_message, left, top - 74, MUTED, 11, width=int(width), multiline=True)
+        hint_text = "No open position"
+        if self.position is not None:
+            hint_text = "Position open"
+        elif self.selected_side and self.selected_amount > 0:
+            hint_text = "Ready to buy"
+        elif self.selected_side:
+            hint_text = "Add amount next"
+        arcade.draw_text(hint_text, left, top - 74, MUTED, 11, bold=True)
 
         if self.position is None:
             if not self.selected_side:
                 arcade.draw_text("Preview", left, top - 120, MUTED, 12, bold=True)
-                arcade.draw_text("Pick Up or Down first", left, top - 146, TEXT, 15, bold=True)
-                arcade.draw_text("The demo will guide you step by step.", left, top - 168, MUTED, 11)
+                arcade.draw_text("Select Up or Down", left, top - 146, TEXT, 15, bold=True)
                 return
             if self.selected_amount <= 0:
                 arcade.draw_text("Preview", left, top - 120, MUTED, 12, bold=True)
                 arcade.draw_text(f"{self.selected_side} selected", left, top - 146, TEXT, 15, bold=True)
-                arcade.draw_text("Now type an amount to keep going.", left, top - 168, MUTED, 11)
+                arcade.draw_text("Type amount, then click Buy & Start.", left, top - 168, MUTED, 11)
                 return
             price = self._contract_price(self.selected_side)
             arcade.draw_text("Preview", left, top - 120, MUTED, 12, bold=True)
@@ -3343,6 +3337,59 @@ class BitcoinPredictionGame(arcade.Window):
             int(12 * scale),
         )
 
+    def _draw_timeout_loss_overlay(self) -> None:
+        if self.timeout_loss_overlay_timer <= 0.0:
+            return
+
+        progress = 1.0 - (self.timeout_loss_overlay_timer / TIMEOUT_LOSS_OVERLAY_DURATION)
+        progress = max(0.0, min(1.0, progress))
+        fade = 1.0 - max(0.0, (progress - 0.82) / 0.18)
+        if fade <= 0.0:
+            return
+
+        pulse = 0.5 + 0.5 * math.sin(self.ui_animation_seconds * 7.6)
+        overlay_alpha = int((170 + 30 * pulse) * fade)
+        card_alpha = int(245 * fade)
+        text_alpha = int(250 * fade)
+        left = WINDOW_WIDTH / 2 - 360
+        bottom = WINDOW_HEIGHT / 2 - 154
+        width = 720
+        height = 308
+
+        arcade.draw_lbwh_rectangle_filled(0, 0, WINDOW_WIDTH, WINDOW_HEIGHT, (12, 4, 6, overlay_alpha))
+        arcade.draw_lbwh_rectangle_filled(left, bottom, width, height, (26, 14, 18, card_alpha))
+        arcade.draw_lbwh_rectangle_outline(left, bottom, width, height, (*RED, card_alpha), 2)
+        arcade.draw_lbwh_rectangle_filled(left, bottom + height - 16, width, 16, (*RED, card_alpha))
+
+        arcade.draw_text(
+            "TOO SLOW",
+            left + 28,
+            bottom + height - 68,
+            (*RED, text_alpha),
+            44,
+            bold=True,
+        )
+        arcade.draw_text(
+            f"You just lost {self._format_money(self.timeout_loss_penalty)} because you did not act before the trade clock hit 0.",
+            left + 30,
+            bottom + height - 120,
+            (*TEXT, text_alpha),
+            18,
+            bold=True,
+            width=658,
+            multiline=True,
+        )
+        arcade.draw_text(
+            f"Trade window: {self.timeout_loss_window_used}s | Day advanced. Click New Market to keep playing.",
+            left + 30,
+            bottom + 36,
+            (*MUTED, text_alpha),
+            14,
+            bold=True,
+            width=658,
+            multiline=True,
+        )
+
     def _draw_insider_activation_confirm_popup(self) -> None:
         if not self.insider_activation_prompt_active:
             return
@@ -3359,7 +3406,7 @@ class BitcoinPredictionGame(arcade.Window):
         arcade.draw_lbwh_rectangle_filled(left, bottom + height - 14, width, 14, insider_purple)
         arcade.draw_text("Activate Insider Ear?", left + 24, bottom + height - 54, TEXT, 29, bold=True)
         arcade.draw_text(
-            "Confirm to reveal what the insider highly smiles upon for this market.",
+            "Confirm to reveal the insider call for this market.",
             left + 24,
             bottom + height - 96,
             MUTED,
