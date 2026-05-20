@@ -2,6 +2,11 @@
 
 This repository is a template for small student teams building a 2D game with Python and Arcade.
 
+## Team Members
+
+- Benjamin Clarke
+- Benjamin Silverman
+
 ## Getting Started with Your Team
 
 ### Step 1: One student creates the team repository

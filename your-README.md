@@ -4,11 +4,11 @@
 
 # Your Game Title Here
 
-**Group Members:** [List all group member names here]
+**Group Members:** Benjamin Clarke, Benjamin Silverman
 
 ## Description
 
-[Write a short description of your game here. What is it about? What makes it fun?]
+This game is a Bitcoin prediction market inspired by Polymarket, where players bet on short-term up/down price moves. It's fun because each round combines high-risk "bets" with fast, evidence-based decisions: players must quickly read market news articles and act before the window closes. What makes the game fun is the mix of speed, risk, and strategy. They have to quickly read news, interpret news signals, and place "bets" before the round ends. We've also added features like saving grace and the insider ear to increase the gamification and the level-up systems, along with articles being able to be bought to allow for more freedom for the user.
 
 ## Screenshots
 
