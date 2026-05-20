@@ -49,7 +49,14 @@ from .constants import (
     WINDOW_WIDTH,
     YELLOW,
 )
-from .content import ALL_NEWS, DEMO_NEWS_CARDS, SIMPLE_TUTORIAL_ARTICLES, TUTORIAL_CLICK_TARGETS
+from .content import (
+    ALL_NEWS,
+    DEMO_NEWS_CARDS,
+    DOWNWARD_BIAS_NEWS,
+    SIMPLE_TUTORIAL_ARTICLES,
+    TUTORIAL_CLICK_TARGETS,
+    UPWARD_BIAS_NEWS,
+)
 from .market_logic import advance_market_price, build_market, choose_news_cards, contract_price
 from .models import ClickZone, MarketState, NewsCard, Position, TradeRecord
 
@@ -157,10 +164,12 @@ class BitcoinPredictionGame(arcade.Window):
         self._chart_geometry_dims: tuple[float, float, float, float] | None = None
         self._chart_geometry_dirty = True
         self._chart_prices_dirty = True
+        self.real_market_up_total = 0
+        self.real_market_down_total = 0
         self.news_cards = choose_news_cards(ALL_NEWS, count=MAX_PLAYER_NEWS_ARTICLES)
         self.win_sounds = self._load_sound_set(WIN_SOUND_FILES)
         self.lose_sounds = self._load_sound_set(LOSE_SOUND_FILES)
-        self.market = self._new_market()
+        self.market = self._new_market(track_real_direction=False)
         self.set_mouse_visible(False)
 
     def _current_page_key(self) -> str:
@@ -226,6 +235,11 @@ class BitcoinPredictionGame(arcade.Window):
         current_day = min(SIMULATION_DAYS_LIMIT, self.simulation_days_completed + 1)
         return f"Day {current_day}/{SIMULATION_DAYS_LIMIT}"
 
+    def _choose_next_real_market_direction_up(self) -> bool:
+        if self.real_market_up_total == self.real_market_down_total:
+            return random.random() < 0.5
+        return self.real_market_up_total < self.real_market_down_total
+
     def _handle_position_entry_timeout(self) -> None:
         if self.demo_round_active or self.market.active or self.market.settled or self.position is not None:
             return
@@ -271,7 +285,7 @@ class BitcoinPredictionGame(arcade.Window):
             return None
         return NEWS_ARTICLE_SHOP_PRICES[purchase_index]
 
-    def _new_market(self, demo_mode: bool = False) -> MarketState:
+    def _new_market(self, demo_mode: bool = False, track_real_direction: bool = True) -> MarketState:
         self.tick_accumulator = 0.0
         self.price_velocity = 0.0
         # Keep click response immediate: do not fade in a post-click transition overlay.
@@ -315,9 +329,16 @@ class BitcoinPredictionGame(arcade.Window):
             self.selected_amount = 0
             self.amount_input_text = ""
             self.amount_input_active = False
+            target_up = self._choose_next_real_market_direction_up()
+            directional_pool = UPWARD_BIAS_NEWS if target_up else DOWNWARD_BIAS_NEWS
             self.news_cards = self._starter_first_news_cards(
-                choose_news_cards(ALL_NEWS, count=MAX_PLAYER_NEWS_ARTICLES)
+                choose_news_cards(directional_pool, count=MAX_PLAYER_NEWS_ARTICLES)
             )
+            if track_real_direction:
+                if target_up:
+                    self.real_market_up_total += 1
+                else:
+                    self.real_market_down_total += 1
 
         if demo_mode:
             self.unlocked_news_cards = min(3, self._max_news_articles_this_round())
@@ -1121,6 +1142,8 @@ class BitcoinPredictionGame(arcade.Window):
         self.insider_tip_side = ""
         self.insider_tip_confidence = 0
         self.insider_suspicion = 0.0
+        self.real_market_up_total = 0
+        self.real_market_down_total = 0
         self.trade_history.clear()
         self.market = self._new_market()
         self.status_message = (
