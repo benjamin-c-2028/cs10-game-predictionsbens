@@ -2536,12 +2536,11 @@ class BitcoinPredictionGame(arcade.Window):
         if not self.market.active and not self.market.settled:
             if not self.demo_round_active and self.position is None and self.position_entry_seconds_remaining > 0.0:
                 place_seconds = int(math.ceil(self.position_entry_seconds_remaining))
-                place_color = RED if place_seconds <= 5 else YELLOW
                 arcade.draw_text(
                     f"PLACE TRADE IN {place_seconds:02d}S",
                     left + width - 84,
                     stats_y + 15,
-                    place_color,
+                    RED,
                     12,
                     bold=True,
                     anchor_x="center",
