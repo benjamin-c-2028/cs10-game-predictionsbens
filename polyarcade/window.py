@@ -257,16 +257,20 @@ class BitcoinPredictionGame(arcade.Window):
         self.selected_amount = 0
         self.amount_input_text = ""
         self.amount_input_active = False
+        penalty = round(float(self.balance) * 0.20, 2)
+        self.balance = round(max(0.0, float(self.balance) - penalty), 2)
         self._advance_simulation_day()
         self.status_message = (
             f"{self._player_call_name()}, order window expired after {window_used} seconds. "
-            "No position was placed for this day."
+            f"No position was placed for this day. "
+            f"You lost {self._format_money(penalty)} (20% inactivity penalty)."
         )
         self._trigger_issue_popup(
             "Order Window Expired",
             (
                 f"You had {window_used} seconds to place a position. "
-                "Day advanced with no trade. Click New Market."
+                f"Day advanced with no trade, and you lost {self._format_money(penalty)} "
+                "(20% of your net worth). Click New Market."
             ),
         )
         self._hover_refresh_needed = True
