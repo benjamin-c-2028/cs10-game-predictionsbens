@@ -115,7 +115,7 @@ class BitcoinPredictionGame(arcade.Window):
         )
         self.game_over_hint = "Restart to continue with a fresh $1,000 run."
         self.simulation_days_completed = 0
-        self.selected_side = "Up"
+        self.selected_side = ""
         self.selected_amount = 0
         self.amount_input_text = ""
         self.amount_input_active = False
@@ -264,7 +264,7 @@ class BitcoinPredictionGame(arcade.Window):
             self.demo_side_picked = False
             self.demo_amount_picked = False
         else:
-            self.selected_side = "Up"
+            self.selected_side = ""
             self.selected_amount = 0
             self.amount_input_text = ""
             self.amount_input_active = False
@@ -562,6 +562,13 @@ class BitcoinPredictionGame(arcade.Window):
     def _available_balance(self) -> float:
         return self.demo_balance if self.demo_round_active else self.balance
 
+    def _effective_balance_for_loss_check(self) -> float:
+        effective_balance = self.balance
+        if self.position is not None and self.market.active and not self.market.settled:
+            # Count committed stake while a position is still open.
+            effective_balance += float(self.position.amount)
+        return effective_balance
+
     def _all_in(self) -> None:
         call_name = self._player_call_name()
         if self.demo_round_active:
@@ -584,8 +591,8 @@ class BitcoinPredictionGame(arcade.Window):
             self._trigger_issue_popup("Market Settled", "Start a new market before going all-in.")
             return
         if not self.selected_side:
-            self.status_message = f"{call_name}, pick Up or Down first."
-            self._trigger_issue_popup("Pick a Side", "Choose Up or Down before going all-in.")
+            self.status_message = f"{call_name}, choose a side first. Click Up or Down."
+            self._trigger_issue_popup("Pick a Side", "Click Up or Down first, then click All In.")
             return
 
         stake = int(self._available_balance())
@@ -717,10 +724,10 @@ class BitcoinPredictionGame(arcade.Window):
             )
             return
         if self.saving_grace_owned:
-            self.status_message = f"{call_name}, you already own Saving Grace."
+            self.status_message = f"{call_name}, Saving Grace is already armed (1 use)."
             self._trigger_issue_popup(
                 "Already Owned",
-                "Saving Grace is already active on your account.",
+                "Saving Grace is already armed for one use.",
             )
             return
         if self.balance < SAVING_GRACE_SHOP_PRICE:
@@ -740,12 +747,12 @@ class BitcoinPredictionGame(arcade.Window):
         self.balance -= SAVING_GRACE_SHOP_PRICE
         self.saving_grace_owned = True
         self.status_message = (
-            f"{call_name}, Saving Grace unlocked. "
-            "If your balance drops below $100, you revive at $1,000."
+            f"{call_name}, Saving Grace armed (1 use). "
+            "If your balance drops below $100 once, you revive at $1,000 and it is consumed."
         )
         self._trigger_issue_popup(
             "Saving Grace Unlocked",
-            "Protection active. If your balance falls below $100, it restores to $1,000.",
+            "Protection armed for one use. On first trigger below $100, it restores to $1,000 then expires.",
         )
         self._check_game_loss_state()
 
@@ -896,22 +903,23 @@ class BitcoinPredictionGame(arcade.Window):
                 ),
             )
             return
-        if self.balance >= GAME_OVER_BALANCE_THRESHOLD:
+        if self._effective_balance_for_loss_check() >= GAME_OVER_BALANCE_THRESHOLD:
             return
 
         call_name = self._player_call_name()
         if self.saving_grace_owned:
+            self.saving_grace_owned = False
             self.balance = STARTING_BALANCE
             self.market = self._new_market()
             self.status_message = (
-                f"{call_name}, Saving Grace activated. "
+                f"{call_name}, Saving Grace activated and was consumed. "
                 f"Balance restored to {self._format_money(float(STARTING_BALANCE))}."
             )
             self._trigger_issue_popup(
                 "Saving Grace Activated",
                 (
                     "You dropped below $100, so Saving Grace revived you "
-                    f"to {self._format_money(float(STARTING_BALANCE))}."
+                    f"to {self._format_money(float(STARTING_BALANCE))}. The one-time shield is now used."
                 ),
             )
             self._hover_refresh_needed = True
@@ -1004,8 +1012,8 @@ class BitcoinPredictionGame(arcade.Window):
             self._trigger_issue_popup("Market Settled", "This market is settled. Start a new market first.")
             return
         if not self.selected_side:
-            self.status_message = f"{call_name}, pick Up or Down first."
-            self._trigger_issue_popup("Pick a Side", "Choose Up or Down before placing your order.")
+            self.status_message = f"{call_name}, choose a side first. Click Up or Down."
+            self._trigger_issue_popup("Pick a Side", "Click Up or Down first, then click Buy & Start.")
             return
         if self.selected_amount <= 0:
             self.status_message = f"{call_name}, pick a stake first."
@@ -1226,16 +1234,25 @@ class BitcoinPredictionGame(arcade.Window):
             return
 
         if clicked_key in ("side_up", "side_down") and not self.market.settled:
-            self.selected_side = "Up" if clicked_key == "side_up" else "Down"
-            if self.demo_round_active:
-                self.demo_side_picked = True
-                self._update_demo_status()
+            chosen_side = "Up" if clicked_key == "side_up" else "Down"
+            if self.selected_side == chosen_side:
+                self.selected_side = ""
+                if self.demo_round_active:
+                    self.demo_side_picked = False
+                    self._update_demo_status()
+                else:
+                    self.status_message = "Side cleared. Click Up or Down to choose a direction."
             else:
-                minimum_order = self._minimum_order_amount()
-                self.status_message = (
-                    f"{self.selected_side} selected, {self._player_call_name()}. "
-                    f"Choose amount, then buy (minimum {self._format_money(float(minimum_order))}, 10%)."
-                )
+                self.selected_side = chosen_side
+                if self.demo_round_active:
+                    self.demo_side_picked = True
+                    self._update_demo_status()
+                else:
+                    minimum_order = self._minimum_order_amount()
+                    self.status_message = (
+                        f"{self.selected_side} selected, {self._player_call_name()}. "
+                        f"Choose amount, then buy (minimum {self._format_money(float(minimum_order))}, 10%)."
+                    )
         elif clicked_key == "buy":
             if self.demo_round_active:
                 if not self.demo_side_picked or not self.demo_amount_picked:
@@ -1262,11 +1279,14 @@ class BitcoinPredictionGame(arcade.Window):
             if self.demo_round_active:
                 self._update_demo_status()
             elif self.selected_amount > 0:
-                minimum_order = self._minimum_order_amount()
-                self.status_message = (
-                    f"Order amount set to ${self.selected_amount}. "
-                    f"Minimum right now is {self._format_money(float(minimum_order))} (10%)."
-                )
+                if self.selected_side:
+                    minimum_order = self._minimum_order_amount()
+                    self.status_message = (
+                        f"Order amount set to ${self.selected_amount}. "
+                        f"Minimum right now is {self._format_money(float(minimum_order))} (10%)."
+                    )
+                else:
+                    self.status_message = "Amount set. Now click Up or Down, then Buy & Start."
 
     def on_key_press(self, symbol: int, modifiers: int) -> None:
         del modifiers
@@ -1311,7 +1331,7 @@ class BitcoinPredictionGame(arcade.Window):
         self._hover_refresh_needed = True
         self.status_message = (
             f"Tutorial opened. Goal: reach {self._format_money(float(WIN_BALANCE_TARGET))} "
-            f"in {SIMULATION_DAYS_LIMIT} simulation days."
+            f"in {SIMULATION_DAYS_LIMIT} simulation days. Start with Step 1: click Up or Down."
         )
 
     def _player_call_name(self) -> str:
@@ -1524,11 +1544,11 @@ class BitcoinPredictionGame(arcade.Window):
         arcade.draw_lbwh_rectangle_outline(panel_left, panel_bottom, panel_width, panel_height, BORDER, 1)
         arcade.draw_lbwh_rectangle_filled(panel_left, panel_bottom + panel_height - 8, panel_width, 8, BLUE)
 
-        arcade.draw_text("Tutorial: choose, enter, buy", panel_left + 42, panel_bottom + panel_height - 70, TEXT, 31, bold=True)
+        arcade.draw_text("Tutorial: click side, set amount, buy", panel_left + 42, panel_bottom + panel_height - 70, TEXT, 31, bold=True)
         arcade.draw_text(
             (
-                "Goal: reach $10,000 within 14 days (two weeks / 14 simulation days). "
-                "Each day is one simulation."
+                "Goal: reach $10,000 within 14 days. Follow this order every round: "
+                "1) click Up or Down, 2) type amount, 3) click Buy & Start."
             ),
             panel_left + 44,
             panel_bottom + panel_height - 106,
@@ -1581,7 +1601,7 @@ class BitcoinPredictionGame(arcade.Window):
         button_color = GREEN if self.hovered_key == "tutorial_continue" else GREEN_DARK
         arcade.draw_lbwh_rectangle_filled(continue_zone.left, continue_zone.bottom, continue_zone.width, continue_zone.height, button_color)
         arcade.draw_lbwh_rectangle_outline(continue_zone.left, continue_zone.bottom, continue_zone.width, continue_zone.height, BORDER, 1)
-        arcade.draw_text("Start Guided Demo", continue_zone.center_x, continue_zone.center_y + 1, TEXT, 17, bold=True, anchor_x="center", anchor_y="center")
+        arcade.draw_text("Start Guided Demo Round", continue_zone.center_x, continue_zone.center_y + 1, TEXT, 17, bold=True, anchor_x="center", anchor_y="center")
 
     def _draw_game_cursor(self) -> None:
         is_text_target = self.hovered_key in CURSOR_TEXT_KEYS
@@ -1769,7 +1789,7 @@ class BitcoinPredictionGame(arcade.Window):
         mode_text = (
             "Demo shop bundle: 3 articles already unlocked. Saving Grace is locked in demo."
             if self.demo_round_active
-            else "Buy extra news articles and protection upgrades. First article opens after Day 1."
+            else "Buy extra news articles and one-use protection upgrades. First article opens after Day 1."
         )
         arcade.draw_text(mode_text, panel_left + 34, panel_bottom + panel_height - 96, MUTED, 14)
 
@@ -1790,7 +1810,7 @@ class BitcoinPredictionGame(arcade.Window):
         stat_cards = [
             ("Cash Available", self._format_money(current_balance), TEXT),
             ("Unlocked Articles", f"{unlocked}/{max_articles}", TEXT),
-            ("Saving Grace", "Owned" if self.saving_grace_owned else "Not Owned", GREEN if self.saving_grace_owned else TEXT),
+            ("Saving Grace", "Armed (1 use)" if self.saving_grace_owned else "Not Armed", GREEN if self.saving_grace_owned else TEXT),
         ]
         for index, (label, value, value_color) in enumerate(stat_cards):
             card_left = panel_left + 32 + index * 296
@@ -1848,6 +1868,7 @@ class BitcoinPredictionGame(arcade.Window):
             f"Starter slot is always the highest-reliability article (80%+).",
             f"Round cap: 1 starter + up to {max_purchases} purchased articles.",
             f"First purchase unlocks after 1 completed simulation day.",
+            f"Saving Grace is one-use only per purchase.",
             f"Drop below {self._format_money(float(GAME_OVER_BALANCE_THRESHOLD))} and you lose the run.",
             f"Reach {self._format_money(float(WIN_BALANCE_TARGET))} by Day {SIMULATION_DAYS_LIMIT} to win the run.",
             tier_line,
@@ -1870,7 +1891,7 @@ class BitcoinPredictionGame(arcade.Window):
 
         arcade.draw_text("In The Shop: Saving Grace", saving_card_left + 190, saving_card_bottom + 168, TEXT, 24, bold=True)
         arcade.draw_text(
-            "If your real balance drops below $100, Saving Grace revives you to $1,000.",
+            "One-use only: if real balance drops below $100, it revives you to $1,000 once.",
             saving_card_left + 190,
             saving_card_bottom + 136,
             MUTED,
@@ -1913,13 +1934,13 @@ class BitcoinPredictionGame(arcade.Window):
             1,
         )
 
-        saving_buy_label = "Buy Saving Grace"
+        saving_buy_label = "Buy 1-Use Saving Grace"
         saving_buy_label_color = TEXT if not saving_disabled else MUTED
         if self.demo_round_active:
             saving_buy_label = "Locked In Demo"
             saving_buy_label_color = MUTED
         elif self.saving_grace_owned:
-            saving_buy_label = "Already Owned"
+            saving_buy_label = "Armed (1 Use)"
             saving_buy_label_color = GREEN
         elif current_balance < SAVING_GRACE_SHOP_PRICE:
             shortfall = max(0.0, float(SAVING_GRACE_SHOP_PRICE) - current_balance)
@@ -2706,9 +2727,12 @@ class BitcoinPredictionGame(arcade.Window):
                 arcade.draw_text("Now type an amount to keep going.", left, top - 168, MUTED, 11)
                 return
             price = self._contract_price(self.selected_side)
-            shares = self.selected_amount / (price / 100)
             arcade.draw_text("Preview", left, top - 120, MUTED, 12, bold=True)
             arcade.draw_text(f"{self.selected_side}: {price}c per share", left, top - 146, TEXT, 15, bold=True)
+            if self.market.settled or price <= 0:
+                arcade.draw_text("Market settled. Click New Market to place another order.", left, top - 168, MUTED, 11)
+                return
+            shares = self.selected_amount / (price / 100)
             if self.demo_round_active:
                 arcade.draw_text(f"Demo only | Max payout ${shares:,.2f}", left, top - 168, MUTED, 11)
             else:
@@ -2757,16 +2781,6 @@ class BitcoinPredictionGame(arcade.Window):
             bold=True,
             anchor_x="right",
         )
-        arcade.draw_text(
-            "Use the Shop menu to buy article slots",
-            left + total_width - 10,
-            bottom + card_height - 6,
-            MUTED_DARK,
-            10,
-            bold=True,
-            anchor_x="right",
-        )
-
         for index in range(max_articles):
             card_left = left + index * (card_width + gap)
             if index < unlocked:
@@ -3072,37 +3086,139 @@ class BitcoinPredictionGame(arcade.Window):
         if not self.game_over_active:
             return
 
-        overlay_alpha = 172
-        left = WINDOW_WIDTH / 2 - 360
-        bottom = WINDOW_HEIGHT / 2 - 180
-        width = 720
-        height = 360
+        pulse = 0.5 + 0.5 * math.sin(self.ui_animation_seconds * 6.0)
+        overlay_alpha = 176 + int(28 * pulse)
         arcade.draw_lbwh_rectangle_filled(0, 0, WINDOW_WIDTH, WINDOW_HEIGHT, (4, 8, 12, overlay_alpha))
-        arcade.draw_lbwh_rectangle_filled(left, bottom, width, height, PANEL)
+
+        sweep = (self.ui_animation_seconds * 170.0) % 160.0
+        streak_alpha = 26 + int(30 * pulse)
+        for offset in range(-220, WINDOW_WIDTH + 220, 160):
+            streak_x = offset + sweep
+            arcade.draw_line(streak_x, WINDOW_HEIGHT, streak_x - 220, 0, (122, 24, 32, streak_alpha), 3)
+
+        left = WINDOW_WIDTH / 2 - 390
+        bottom = WINDOW_HEIGHT / 2 - 210
+        width = 780
+        height = 420
+        arcade.draw_lbwh_rectangle_filled(left, bottom, width, height, (15, 21, 29))
         arcade.draw_lbwh_rectangle_outline(left, bottom, width, height, RED, 2)
-        arcade.draw_lbwh_rectangle_filled(left, bottom + height - 14, width, 14, RED)
-        arcade.draw_text(self.game_over_title, left + 28, bottom + height - 62, RED, 38, bold=True)
+        arcade.draw_lbwh_rectangle_filled(left, bottom + height - 16, width, 16, RED)
+
+        skull_x = left + 86
+        skull_y = bottom + height - 90
+        skull_alpha = 170 + int(60 * pulse)
+        bone_color = (232, 236, 240, skull_alpha)
+        bone_shadow = (198, 206, 214, min(255, skull_alpha + 6))
+        socket_color = (16, 19, 24)
+
+        arcade.draw_circle_filled(skull_x, skull_y - 2, 35, (255, 76, 76, int(48 + 34 * pulse)))
+        arcade.draw_circle_outline(skull_x, skull_y - 2, 35, (255, 122, 122, int(88 + 52 * pulse)), 2)
+
+        arcade.draw_ellipse_filled(skull_x, skull_y + 8, 58, 54, bone_color)
+        arcade.draw_ellipse_filled(skull_x, skull_y - 15, 40, 27, bone_shadow)
+        arcade.draw_ellipse_outline(skull_x, skull_y + 8, 58, 54, (250, 250, 250, min(255, skull_alpha + 20)), 2)
+        arcade.draw_ellipse_outline(skull_x, skull_y - 15, 40, 27, (250, 250, 250, min(255, skull_alpha + 20)), 2)
+
+        arcade.draw_ellipse_filled(skull_x - 12, skull_y + 10, 12, 10, socket_color)
+        arcade.draw_ellipse_filled(skull_x + 12, skull_y + 10, 12, 10, socket_color)
+        arcade.draw_ellipse_outline(skull_x - 12, skull_y + 10, 12, 10, (96, 106, 120), 1)
+        arcade.draw_ellipse_outline(skull_x + 12, skull_y + 10, 12, 10, (96, 106, 120), 1)
+
+        arcade.draw_triangle_filled(
+            skull_x,
+            skull_y - 2,
+            skull_x - 5,
+            skull_y - 13,
+            skull_x + 5,
+            skull_y - 13,
+            socket_color,
+        )
+
+        teeth_left = skull_x - 13
+        teeth_bottom = skull_y - 23
+        teeth_width = 26
+        teeth_height = 10
+        arcade.draw_lbwh_rectangle_filled(teeth_left, teeth_bottom, teeth_width, teeth_height, socket_color)
+        arcade.draw_lbwh_rectangle_outline(teeth_left, teeth_bottom, teeth_width, teeth_height, (96, 106, 120), 1)
+        for notch_x in (teeth_left + 6, teeth_left + 13, teeth_left + 20):
+            arcade.draw_line(notch_x, teeth_bottom + 1, notch_x, teeth_bottom + teeth_height - 1, (96, 106, 120), 1)
+
+        arcade.draw_line(skull_x - 22, skull_y + 26, skull_x - 14, skull_y + 16, (198, 206, 214, 180), 2)
+        arcade.draw_line(skull_x - 14, skull_y + 16, skull_x - 17, skull_y + 8, (198, 206, 214, 180), 2)
+
+        title_size = 42 if len(self.game_over_title) <= 14 else 34
+        arcade.draw_text(self.game_over_title, left + 138, bottom + height - 66, RED, title_size, bold=True)
         arcade.draw_text(
             self.game_over_message,
-            left + 30,
+            left + 140,
             bottom + height - 108,
             TEXT,
             18,
             bold=True,
-            width=650,
+            width=620,
             multiline=True,
         )
         arcade.draw_text(
             self.game_over_hint,
-            left + 30,
-            bottom + height - 142,
+            left + 140,
+            bottom + height - 138,
             MUTED,
             14,
-            width=650,
+            width=620,
             multiline=True,
         )
 
-        restart_zone = ClickZone("restart_game", left + width / 2 - 170, bottom + 44, 340, 62)
+        total_trades = len(self.trade_history)
+        total_profit = sum(trade.profit_loss for trade in self.trade_history)
+        recent_trade = self.trade_history[0] if self.trade_history else None
+        recent_trade_line = "Last trade: none recorded this run."
+        if recent_trade is not None:
+            recent_trade_line = (
+                f"Last trade: {recent_trade.side} {self._format_money(float(recent_trade.amount))} "
+                f"at {recent_trade.entry_price_cents}c -> {recent_trade.result}"
+            )
+
+        stats_left = left + 30
+        stats_bottom = bottom + 120
+        stats_width = width - 60
+        stats_height = 124
+        arcade.draw_lbwh_rectangle_filled(stats_left, stats_bottom, stats_width, stats_height, PANEL_ALT)
+        arcade.draw_lbwh_rectangle_outline(stats_left, stats_bottom, stats_width, stats_height, BORDER, 1)
+        arcade.draw_text(
+            f"Final Balance: {self._format_money(self.balance)}",
+            stats_left + 18,
+            stats_bottom + 88,
+            TEXT,
+            16,
+            bold=True,
+        )
+        arcade.draw_text(
+            f"Run P/L: {self._format_delta(total_profit)}",
+            stats_left + 18,
+            stats_bottom + 62,
+            GREEN if total_profit >= 0 else RED,
+            14,
+            bold=True,
+        )
+        arcade.draw_text(
+            f"Trades Played: {total_trades}",
+            stats_left + 280,
+            stats_bottom + 62,
+            MUTED,
+            14,
+            bold=True,
+        )
+        arcade.draw_text(
+            recent_trade_line,
+            stats_left + 18,
+            stats_bottom + 30,
+            MUTED,
+            12,
+            width=int(stats_width - 32),
+            multiline=True,
+        )
+
+        restart_zone = ClickZone("restart_game", left + width / 2 - 190, bottom + 36, 380, 64)
         self.click_zones.append(restart_zone)
         restart_color = BLUE if self.hovered_key == "restart_game" else GREEN_DARK
         arcade.draw_lbwh_rectangle_filled(
@@ -3121,7 +3237,7 @@ class BitcoinPredictionGame(arcade.Window):
             1,
         )
         arcade.draw_text(
-            "Restart Practice",
+            "Respawn Run ($1,000)",
             restart_zone.center_x,
             restart_zone.center_y + 2,
             TEXT,

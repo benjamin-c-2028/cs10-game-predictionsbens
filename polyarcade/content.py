@@ -230,35 +230,35 @@ DEMO_NEWS_CARDS = [
 SIMPLE_TUTORIAL_ARTICLES = [
     TutorialArticle(
         "Market Brief",
-        "More people are buying Bitcoin today",
-        "When buyers show up, price can move up fast.",
+        "Strong buying pressure is building",
+        "A strong buy clue leans Up, but it is never guaranteed.",
     ),
     TutorialArticle(
         "Risk Desk",
-        "Some traders are selling after the last jump",
-        "When selling grows, price can move down.",
+        "Sellers are still active after the last jump",
+        "Mixed clues mean you should size your stake carefully.",
     ),
     TutorialArticle(
         "Ticker Watch",
-        "Price is moving slowly right now",
-        "A weak clue means you have to think a bit more.",
+        "Short rounds move fast once Buy starts",
+        "Pick side first, then amount, then click Buy & Start.",
     ),
 ]
 
 TUTORIAL_CLICK_TARGETS = [
     TutorialClickTarget(
         "Up / Down",
-        "Choose a side",
-        "Pick the side you think will win.",
+        "Pick direction first",
+        "You must click Up or Down before an order can place.",
     ),
     TutorialClickTarget(
         "$ Amount",
         "Choose a stake",
-        "Pick how much demo cash to use.",
+        "Type how much demo cash to risk on this round.",
     ),
     TutorialClickTarget(
         "Buy",
-        "Start the market",
-        "Start the demo round.",
+        "Launch the round",
+        "Buy & Start opens the 15-second market timer.",
     ),
 ]

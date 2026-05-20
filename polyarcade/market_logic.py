@@ -20,6 +20,22 @@ from .constants import (
 from .models import MarketState, NewsCard
 
 
+def _article_key(card: NewsCard) -> tuple[str, str]:
+    return (card.headline.strip().casefold(), card.source.strip().casefold())
+
+
+def _dedupe_news_pool(news_pool: list[NewsCard]) -> list[NewsCard]:
+    seen: set[tuple[str, str]] = set()
+    unique_cards: list[NewsCard] = []
+    for card in news_pool:
+        key = _article_key(card)
+        if key in seen:
+            continue
+        seen.add(key)
+        unique_cards.append(card)
+    return unique_cards
+
+
 def _rebalance_display_reliability(cards: list[NewsCard]) -> list[NewsCard]:
     """Ensure one card is >80, one card is >50, and remaining cards are randomized."""
     if not cards:
@@ -51,15 +67,16 @@ def _rebalance_display_reliability(cards: list[NewsCard]) -> list[NewsCard]:
 
 
 def choose_news_cards(news_pool: list[NewsCard], count: int = 3) -> list[NewsCard]:
-    if not news_pool:
+    deduped_pool = _dedupe_news_pool(news_pool)
+    if not deduped_pool:
         return []
-    sample_size = max(1, min(count, len(news_pool)))
-    cards = random.sample(news_pool, sample_size)
+    sample_size = max(1, min(count, len(deduped_pool)))
+    cards = random.sample(deduped_pool, sample_size)
     for _ in range(12):
         average_bias = sum(card.price_bias for card in cards) / len(cards)
         if abs(average_bias) >= 0.14:
             return _rebalance_display_reliability(cards)
-        cards = random.sample(news_pool, sample_size)
+        cards = random.sample(deduped_pool, sample_size)
     return _rebalance_display_reliability(cards)
 
 
