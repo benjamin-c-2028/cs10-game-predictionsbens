@@ -1255,7 +1255,18 @@ class BitcoinPredictionGame(arcade.Window):
                     )
         elif clicked_key == "buy":
             if self.demo_round_active:
-                if not self.demo_side_picked or not self.demo_amount_picked:
+                if not self.demo_side_picked:
+                    self._trigger_issue_popup(
+                        "Pick a Side",
+                        "Click Up or Down before you click Buy & Start.",
+                    )
+                    self._update_demo_status()
+                    return
+                if not self.demo_amount_picked:
+                    self._trigger_issue_popup(
+                        "Enter an Amount",
+                        "Type a dollar amount before you click Buy & Start.",
+                    )
                     self._update_demo_status()
                     return
             self._buy_position()
