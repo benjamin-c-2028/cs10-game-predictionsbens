@@ -23,6 +23,10 @@ Simply download the game executable for your operating system and double-click i
 Mac:
 [download-here
 ](https://github.com/benjamin-c-2028/cs10-game-predictionsbens/actions/runs/26771733295/artifacts/7338707511)
-
 Windows:
 [download-here](https://github.com/benjamin-c-2028/cs10-game-predictionsbens/actions/runs/26771733345/artifacts/7338726853)
+
+## If your Mac flags it as a security risk follow these steps
+Mac:
+[Security info](https://github.com/benjamin-c-2028/cs10-game-predictionsbens/blob/main/macos_open_unverified_app_guide.md)
+
