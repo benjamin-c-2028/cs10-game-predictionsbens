@@ -1,4 +1,4 @@
-# Your Game Title Here
+# PolyArcade
 
 **Group Members:** Benjamin Clarke, Benjamin Silverman
 
