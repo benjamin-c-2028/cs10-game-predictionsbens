@@ -1,7 +1,3 @@
-**Note:** Delete the template README.md file and rename this file to README.md before submitting.
-
----
-
 # Your Game Title Here
 
 **Group Members:** Benjamin Clarke, Benjamin Silverman
