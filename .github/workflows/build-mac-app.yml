@@ -1,0 +1,61 @@
+name: Build Mac App
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+
+jobs:
+  build-mac:
+    name: Package Mac app
+    runs-on: macos-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt pyinstaller
+
+      - name: Build standalone Mac app
+        run: |
+          python -m PyInstaller \
+            --noconfirm \
+            --clean \
+            --windowed \
+            --name "Bitcoin-Up-or-Down-Arcade" \
+            --add-data "asset-game:asset-game" \
+            game.py
+
+      - name: Zip app bundle
+        run: |
+          arcade_version_path="dist/Bitcoin-Up-or-Down-Arcade.app/Contents/Resources/arcade/VERSION"
+          if [[ -f "$arcade_version_path/VERSION" ]]; then
+            tmp_version_file="$(mktemp)"
+            cp "$arcade_version_path/VERSION" "$tmp_version_file"
+            rm -rf "$arcade_version_path"
+            mv "$tmp_version_file" "$arcade_version_path"
+            chmod 644 "$arcade_version_path"
+          fi
+          codesign --force --deep --sign - "dist/Bitcoin-Up-or-Down-Arcade.app"
+          ditto -c -k --norsrc --keepParent "dist/Bitcoin-Up-or-Down-Arcade.app" "dist/Bitcoin-Up-or-Down-Arcade-macOS.zip"
+
+      - name: Verify app zip exists
+        run: |
+          test -d "dist/Bitcoin-Up-or-Down-Arcade.app"
+          test -f "dist/Bitcoin-Up-or-Down-Arcade-macOS.zip"
+
+      - name: Upload Mac download
+        uses: actions/upload-artifact@v4
+        with:
+          name: Bitcoin-Up-or-Down-Arcade-macOS
+          path: dist/Bitcoin-Up-or-Down-Arcade-macOS.zip
+          if-no-files-found: error
