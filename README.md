@@ -25,7 +25,7 @@ In the end we veered away from doing other topics that weren't Bitcoin, as Bitco
 Simply download the game executable for your operating system and double-click it to play. No installation required!
 
 Mac:
-Your link here
-
+[download-here
+](https://github.com/benjamin-c-2028/cs10-game-predictionsbens/actions/runs/26771733295/artifacts/7338707511)
 Windows:
 Your link here
